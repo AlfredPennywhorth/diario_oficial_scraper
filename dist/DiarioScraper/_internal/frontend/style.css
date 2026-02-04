@@ -1,0 +1,574 @@
+:root {
+    --primary: #2563eb;
+    --primary-dark: #1e40af;
+    --bg-dark: #0f172a;
+    --bg-card: #1e293b;
+    --text-light: #f8fafc;
+    --text-dim: #94a3b8;
+    --accent-success: #10b981;
+    --accent-warning: #f59e0b;
+    --border: #334155;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    height: 100vh;
+    overflow: hidden;
+}
+
+.app-container {
+    display: flex;
+    height: 100%;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 380px;
+    background-color: var(--bg-card);
+    border-right: 1px solid var(--border);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--primary);
+    margin-bottom: 1rem;
+}
+
+.brand h2 {
+    font-size: 1.5rem;
+    letter-spacing: -0.025em;
+}
+
+.brand i {
+    font-size: 1.5rem;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.control-group label {
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--text-dim);
+}
+
+input,
+textarea {
+    background: #0f172a;
+    border: 1px solid var(--border);
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    color: white;
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: 0.2s;
+}
+
+/* Force dark mode calendar icon invert */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+
+input:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.date-inputs {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.date-inputs input {
+    width: 100%;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    transition: 0.2s;
+    margin-top: auto;
+}
+
+.btn-primary:hover {
+    background: var(--primary-dark);
+}
+
+.btn-primary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+/* Status Box */
+.status-box {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.hidden {
+    display: none;
+}
+
+.log-content {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--accent-success);
+    margin-top: 0.5rem;
+    height: 60px;
+    overflow-y: auto;
+}
+
+/* Loading Bar */
+.loading-bar {
+    height: 4px;
+    background: #334155;
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+
+.loading-bar .bar {
+    height: 100%;
+    background: var(--accent-success);
+    width: 60%;
+    animation: progress 1s infinite linear;
+}
+
+@keyframes progress {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(200%);
+    }
+}
+
+/* Main Content */
+.content {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+    background: radial-gradient(circle at top right, #1e293b 0%, #0f172a 40%);
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn-secondary:hover {
+    border-color: var(--text-light);
+    color: var(--text-light);
+}
+
+/* Grid & Cards */
+.results-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary);
+    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.3);
+}
+
+.card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+}
+
+.card.type-compra::before {
+    background: #3b82f6;
+}
+
+.card.type-aditamento::before {
+    background: #f59e0b;
+}
+
+.card.type-aditamento .badge {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.card.type-parceria::before {
+    background: #22c55e;
+}
+
+.card.type-parceria .badge {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+}
+
+.card.type-doacao::before {
+    background: #a855f7;
+}
+
+.card.type-doacao .badge {
+    background: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+}
+
+.card.type-diversos::before {
+    background: #94a3b8;
+}
+
+.card.type-diversos .badge {
+    background: rgba(148, 163, 184, 0.15);
+    color: #64748b;
+}
+
+.card.type-contrato::before {
+    background: #10b981;
+}
+
+.card.type-contrato .badge {
+    background: rgba(16, 185, 129, 0.15);
+    color: #10b981;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.badge {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.card h3 {
+    font-size: 1.1rem;
+    line-height: 1.4;
+    color: var(--text-light);
+}
+
+.meta-row {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.snippet {
+    font-size: 0.9rem;
+    color: #cbd5e1;
+    line-height: 1.5;
+    flex-grow: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.card-footer {
+    padding-top: 1rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.link-btn {
+    text-decoration: none;
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.link-btn:hover {
+    text-decoration: underline;
+}
+
+.empty-state {
+    text-align: center;
+    grid-column: 1 / -1;
+    padding: 4rem;
+    color: var(--text-dim);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.5;
+}
+
+/* View Toggles */
+.view-toggles {
+    display: flex;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 2px;
+}
+
+.view-toggles button {
+    background: transparent;
+    border: none;
+    color: var(--text-dim);
+    padding: 0.5rem 1rem;
+    border-radius: 0.3rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.2s;
+}
+
+.view-toggles button.active {
+    background: var(--primary);
+    color: white;
+}
+
+.view-toggles button:hover:not(.active) {
+    color: var(--text-light);
+}
+
+/* Text View Styling */
+.results-text {
+    background: white;
+    color: #1a1a1a;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    font-family: 'Times New Roman', Times, serif;
+    /* Document look */
+    line-height: 1.6;
+}
+
+.results-text.hidden {
+    display: none;
+}
+
+.text-doc-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 2px solid #ddd;
+    padding-bottom: 1rem;
+    margin-bottom: 2rem;
+}
+
+.text-doc-header h2 {
+    font-size: 1.5rem;
+    text-transform: uppercase;
+    color: #333;
+}
+
+.text-item {
+    border-left: 4px solid var(--primary);
+    padding-left: 1rem;
+    margin-bottom: 2rem;
+}
+
+.text-item p {
+    margin-bottom: 0.25rem;
+}
+
+.text-item.type-contrato {
+    border-left-color: #10b981;
+    /* Green-ish teal */
+}
+
+.text-item.type-empenho {
+    border-left-color: #10b981;
+    /* Same as contrato */
+}
+
+.text-item.type-aditamento {
+    border-left-color: #f59e0b;
+    /* Orange */
+}
+
+.text-item.type-apostilamento {
+    border-left-color: #f59e0b;
+    /* Orange */
+}
+
+.text-item.type-pregao {
+    border-left-color: #3b82f6;
+    /* Blue */
+}
+
+.text-item.type-parceria {
+    border-left-color: #22c55e;
+    /* Bright Green */
+}
+
+.text-item.type-doacao {
+    border-left-color: #a855f7;
+    /* Purple */
+}
+
+.text-item.type-diversos {
+    border-left-color: #94a3b8;
+    /* Dimmed Gray */
+    background-color: #f8fafc;
+    /* Very light gray background */
+    opacity: 0.8;
+}
+
+.text-item strong {
+    font-weight: 700;
+    color: #000;
+}
+
+/* Stats Box */
+.stats-box {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.stats-box h4 {
+    margin-bottom: 0.5rem;
+    color: var(--text-light);
+}
+
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+    color: var(--text-dim);
+}
+
+.stat-row strong {
+    color: var(--text-light);
+}
+
+/* Legend */
+.legend-box {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0 0 1.5rem 0;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.dot.compra {
+    background-color: #3b82f6;
+}
+
+/* Blue */
+.dot.contrato {
+    background-color: #10b981;
+}
+
+/* Green-Teal */
+.dot.aditamento {
+    background-color: #f59e0b;
+}
+
+/* Orange */
+.dot.parceria {
+    background-color: #22c55e;
+}
+
+/* Green */
+.dot.doacao {
+    background-color: #a855f7;
+}
+
+/* Purple */
+.dot.destaque {
+    background-color: #ffc107;
+    box-shadow: 0 0 4px #ffc107;
+}
+
+/* Gold */
+.dot.diversos {
+    background-color: #94a3b8;
+}
+
+/* Gray */

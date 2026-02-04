@@ -1,0 +1,11 @@
+{
+  "version": "1.3.0",
+  "release_date": "2026-02-04",
+  "download_url": "https://github.com/<SEU_USUARIO>/<SEU_REPOSITORIO>/releases/download/v1.3.0/DiarioScraper-v1.3.0.zip",
+  "changelog": [
+    "Melhoria na classificação de contratos formalizados",
+    "Sistema de verificação automática de atualizações",
+    "Interface visual aprimorada com banner de notificações"
+  ],
+  "critical": false
+}

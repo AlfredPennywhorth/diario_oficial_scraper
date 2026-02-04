@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diário Oficial Scraper</title>
+    <link rel="stylesheet" href="/static/style.css?v=2">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-newspaper"></i>
+                <h2>DO.Scraper</h2>
+            </div>
+
+            <div class="control-group">
+                <label>Período de Busca</label>
+                <div class="date-inputs">
+                    <input type="date" id="startDate">
+                    <input type="date" id="endDate">
+                </div>
+                <small>Formato: DD/MM/AAAA</small>
+            </div>
+
+            <div class="control-group">
+                <label>Termos de Busca <small>(Um por linha)</small></label>
+                <textarea id="searchTerms" rows="15"
+                    placeholder="Ex: Pregão Eletrônico&#10;Contrato&#10;Aditamento">Contrato&#10;Aditamento&#10;Pregão&#10;Termo de Colaboração&#10;Termo de Fomento&#10;Acordo de Cooperação&#10;Termo de Doação&#10;Termo de Comodato&#10;Nota de Empenho</textarea>
+            </div>
+
+            <button id="btnSearch" class="btn-primary" onclick="startSearch()">
+                <i class="fa-solid fa-magnifying-glass"></i> Iniciar Raspagem
+            </button>
+
+            <div id="statsBox" class="stats-box hidden">
+                <h4>Resumo</h4>
+                <div id="statsContent"></div>
+            </div>
+
+            <div id="statusArea" class="status-box hidden">
+                <h4>Status</h4>
+                <div id="statusLog" class="log-content">Aguardando...</div>
+                <div class="loading-bar">
+                    <div class="bar"></div>
+                </div>
+            </div>
+
+            <div class="footer-version"
+                style="margin-top: auto; padding-top: 20px; color: #666; font-size: 0.8em; text-align: center;">
+                v1.2 (Portable)
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="content">
+            <header>
+                <h1>Resultados da Busca</h1>
+
+                <div class="view-toggles">
+                    <button id="btnViewCards" class="active" onclick="switchView('cards')"><i
+                            class="fa-solid fa-table-cells-large"></i> Cards</button>
+                    <button id="btnViewText" onclick="switchView('text')"><i class="fa-solid fa-align-left"></i> Texto
+                        Email</button>
+                </div>
+
+                <div class="actions">
+                    <button class="btn-secondary" onclick="exportCSV()"><i class="fa-solid fa-download"></i>
+                        CSV</button>
+                    <button class="btn-secondary" onclick="clearResults()"><i class="fa-solid fa-trash"></i>
+                        Limpar</button>
+                </div>
+            </header>
+
+            <div class="legend-box">
+                <span class="legend-item"><span class="dot compra"></span> Compra/Contrato</span>
+                <span class="legend-item"><span class="dot aditamento"></span> Aditamento</span>
+                <span class="legend-item"><span class="dot parceria"></span> Parceria</span>
+                <span class="legend-item"><span class="dot doacao"></span> Doação</span>
+                <span class="legend-item"><span class="dot destaque"></span> Homologação</span>
+                <span class="legend-item"><span class="dot diversos"></span> Outros/Diversos</span>
+            </div>
+
+            <div id="resultsGrid" class="results-grid">
+                <div class="empty-state">
+                    <i class="fa-regular fa-folder-open"></i>
+                    <p>Nenhum resultado ainda. Inicie uma busca para ver os dados.</p>
+                </div>
+            </div>
+
+            <div id="resultsText" class="results-text hidden">
+                <!-- Text view content will be injected here -->
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/app.js?v=2"></script>
+</body>
+
+</html>
