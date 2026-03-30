@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diário Oficial Scraper</title>
-    <link rel="stylesheet" href="/static/style.css?v=2">
+    <link rel="stylesheet" href="/static/style.css?v=3">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -46,9 +46,18 @@
             </div>
 
             <div class="control-group">
-                <label>Termos de Busca <small>(Um por linha)</small></label>
-                <textarea id="searchTerms" rows="15"
-                    placeholder="Ex: Pregão Eletrônico&#10;Contrato&#10;Aditamento">Contrato&#10;Aditamento&#10;Pregão&#10;Termo de Colaboração&#10;Termo de Fomento&#10;Acordo de Cooperação&#10;Termo de Doação&#10;Termo de Comodato&#10;Nota de Empenho</textarea>
+                <label>Tipos de Documento a Pesquisar</label>
+                <div id="searchTermsCheckboxes" class="checkbox-group" style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px; font-size: 0.9em;">
+                    <label><input type="checkbox" name="searchTerm" value="Contrato" checked> Contrato</label>
+                    <label><input type="checkbox" name="searchTerm" value="Aditamento" checked> Aditamento</label>
+                    <label><input type="checkbox" name="searchTerm" value="Pregão" checked> Pregão / Licitação</label>
+                    <label><input type="checkbox" name="searchTerm" value="Termo de Colaboração" checked> Termo de Colaboração</label>
+                    <label><input type="checkbox" name="searchTerm" value="Termo de Fomento" checked> Termo de Fomento</label>
+                    <label><input type="checkbox" name="searchTerm" value="Acordo de Cooperação" checked> Acordo de Cooperação</label>
+                    <label><input type="checkbox" name="searchTerm" value="Termo de Doação" checked> Termo de Doação</label>
+                    <label><input type="checkbox" name="searchTerm" value="Termo de Comodato" checked> Termo de Comodato</label>
+                    <label><input type="checkbox" name="searchTerm" value="Nota de Empenho" checked> Nota de Empenho</label>
+                </div>
             </div>
 
             <button id="btnSearch" class="btn-primary" onclick="startSearch()">
@@ -70,7 +79,8 @@
 
             <div id="versionFooter" class="footer-version"
                 style="margin-top: auto; padding-top: 20px; color: #666; font-size: 0.8em; text-align: center;">
-                <i class="fa-solid fa-spinner fa-spin" style="margin-right: 5px;"></i> Carregando versão...
+                <i class="fa-solid fa-spinner fa-spin" style="margin-right: 5px;"></i> Carregando versão... (v1.3.0
+                Check)
             </div>
         </aside>
 
@@ -116,7 +126,7 @@
         </main>
     </div>
 
-    <script src="/static/app.js?v=2"></script>
+    <script src="/static/app.js?v=3"></script>
 </body>
 
 </html>

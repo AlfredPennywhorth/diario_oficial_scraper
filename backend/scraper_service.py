@@ -129,7 +129,7 @@ class DiarioScraper:
         # Priority: explicit contract number -> finding patterns like "Pregão Eletrônico nº 01/25"
         if data.get('num_contrato') in ["-", "", None]:
             # Look for Pregão/Contrato specific IDs
-            m_id = re.search(r'(?:Pregão(?: Eletrônico)?|Contrato|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Cooperação|Termo de Doação|Termo de Comodato)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', full_text, re.IGNORECASE)
+            m_id = re.search(r'(?:Pregão(?: Eletrônico)?|Contrato|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Coopera[çc][ãa]o|Termo de Doação|Termo de Comodato)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', full_text, re.IGNORECASE)
             if m_id: 
                 data['num_contrato'] = m_id.group(1)
 
@@ -146,8 +146,14 @@ class DiarioScraper:
                 data['tipo_doc'] = 'PARCERIA'
             elif re.search(r'Termo de Colaboração', full_text, re.IGNORECASE):
                 data['tipo_doc'] = 'PARCERIA'
-            elif re.search(r'Acordo de Cooperação', full_text, re.IGNORECASE):
-                 data['tipo_doc'] = 'PARCERIA'
+            elif re.search(r'Acordo de Coopera[çc][ãa]o', full_text, re.IGNORECASE):
+                 # Set as a separate type to easily format it in the frontend
+                 data['tipo_doc'] = 'ACORDO_COOPERACAO'
+                 
+                 # Try to extract the number of the "Acordo de Cooperação" to contract_number
+                 m_acordo = re.search(r'Acordo de Coopera[çc][ãa]o\s*(?:n(?:[º°]|um)[.\s]*)?([\d\.]+(?:/[\d]{2,4})?)', full_text, re.IGNORECASE)
+                 if m_acordo:
+                     data['num_contrato'] = m_acordo.group(1)
             elif re.search(r'Termo de Doação', full_text, re.IGNORECASE):
                  data['tipo_doc'] = 'DOACAO'
             elif re.search(r'Termo de Comodato', full_text, re.IGNORECASE):
@@ -159,7 +165,20 @@ class DiarioScraper:
             elif re.search(r'(ESCLARECIMENTO|QUESTIONAMENTO|DESPACHO DE IMPUGNAÇ|IMPUGNAÇ[ÃA]O AO EDITAL)', full_text, re.IGNORECASE):
                  data['tipo_doc'] = 'DIVERSOS'
             else:
-                data['tipo_doc'] = 'OUTRO'
+                # Check for CONTRATO
+                # Strong indicators: "Contrato nº" (with number), "Formalização do Contrato", "Termo de Contrato"
+                is_contract = False
+                # 1. Matches "Formalização do Contrato", "Termo de Contrato", "Extrato de Contrato"
+                if re.search(r'(?:Formalização|Termo|Extrato) d[oa] Contrato', full_text, re.IGNORECASE):
+                     is_contract = True
+                # 2. Matches "Contrato nº 123" (must have number)
+                elif re.search(r'Contrato\s*(?:nº|n°)\s*[\d]+', full_text, re.IGNORECASE):
+                     is_contract = True
+                
+                if is_contract:
+                    data['tipo_doc'] = 'CONTRATO'
+                else:
+                    data['tipo_doc'] = 'OUTRO'
 
         # Parent Contract for Aditamento/Apostilamento -> "ao Contrato nº 31/16"
         if data['tipo_doc'] in ['ADITAMENTO', 'APOSTILAMENTO']:
@@ -235,21 +254,55 @@ class DiarioScraper:
             try:
                 dt_ini = datetime.strptime(validade_inicio, "%d/%m/%Y")
                 prazo_val = int(re.sub(r'\D', '', data['prazo']))
-                tipo = data['tipo_prazo'].lower()
+                tipo = data['tipo_prazo'].lower() if data.get('tipo_prazo') else ''
                 
+                # If tipo is empty, try to guess from prazo string itself
+                if not tipo:
+                    if 'mês' in data['prazo'].lower() or 'meses' in data['prazo'].lower(): tipo = 'mês'
+                    elif 'ano' in data['prazo'].lower(): tipo = 'ano'
+                    elif 'dia' in data['prazo'].lower(): tipo = 'dia'
+
                 if 'mês' in tipo or 'mes' in tipo:
-                    # Add months roughly
-                    import dateutil.relativedelta
-                    dt_fim = dt_ini + dateutil.relativedelta.relativedelta(months=prazo_val)
+                    # Add months roughly: 30 days per month to avoid dateutil, or standard math:
+                    months_total = dt_ini.month - 1 + prazo_val
+                    y_add = months_total // 12
+                    new_m = months_total % 12 + 1
+                    try:
+                        dt_fim = dt_ini.replace(year=dt_ini.year + y_add, month=new_m)
+                    except ValueError:
+                        # Handle e.g., Feb 29 to Feb 28
+                        dt_fim = dt_ini.replace(year=dt_ini.year + y_add, month=new_m, day=28)
                     validade_fim = dt_fim.strftime("%d/%m/%Y")
                 elif 'dia' in tipo:
                     dt_fim = dt_ini + timedelta(days=prazo_val)
                     validade_fim = dt_fim.strftime("%d/%m/%Y")
                 elif 'ano' in tipo:
-                     dt_fim = dt_ini + dateutil.relativedelta.relativedelta(years=prazo_val)
+                     try:
+                         dt_fim = dt_ini.replace(year=dt_ini.year + prazo_val)
+                     except ValueError:
+                         dt_fim = dt_ini.replace(year=dt_ini.year + prazo_val, day=28) # Leap year safe
                      validade_fim = dt_fim.strftime("%d/%m/%Y")
             except:
                 pass 
+
+        # Another heuristic for calculating dates directly from text "prazo de X [meses|anos]" if not caught above
+        if not found_vig and validade_fim == "-" and validade_inicio:
+            m_prazo_inline = re.search(r'prazo\s*(?:de\s*(?:vigência\s*)?)?(\d+)\s*(meses|anos?)', full_text, re.IGNORECASE)
+            if m_prazo_inline:
+                try:
+                    val = int(m_prazo_inline.group(1))
+                    tipo = m_prazo_inline.group(2).lower()
+                    dt_ini = datetime.strptime(validade_inicio, "%d/%m/%Y")
+                    if 'ano' in tipo:
+                        try: dt_fim = dt_ini.replace(year=dt_ini.year + val)
+                        except ValueError: dt_fim = dt_ini.replace(year=dt_ini.year + val, day=28)
+                        validade_fim = dt_fim.strftime("%d/%m/%Y")
+                    elif 'mes' in tipo:
+                        months_total = dt_ini.month - 1 + val
+                        try: dt_fim = dt_ini.replace(year=dt_ini.year + months_total//12, month=months_total%12+1)
+                        except ValueError: dt_fim = dt_ini.replace(year=dt_ini.year + months_total//12, month=months_total%12+1, day=28)
+                        validade_fim = dt_fim.strftime("%d/%m/%Y")
+                except: pass
 
         data['validade_inicio'] = validade_inicio
         data['validade_fim'] = validade_fim
@@ -417,38 +470,79 @@ class DiarioScraper:
             
             self._log("Navegador aberto com sucesso")
 
+            self._log("Navegador aberto com sucesso")
+            
+            # Navigate to base URL ONCE
+            self._log(f"[LINK] Acessando URL base (sessão inicial)...")
+            try:
+                await page.goto(self.base_url, timeout=30000)
+            except Exception as e:
+                self._log(f"[ERRO] Falha ao acessar URL base: {e}")
+                raise
+
             for current_date in date_list:
                 if status_callback:
                     await status_callback(f"Acessando Diário Oficial para: {current_date}")
 
-                # Retry logic for the initial page load for each date (reduced to 2 attempts)
+                # Retry logic now focuses on the SEARCH ACTION, not the page load
                 @retry(
                     stop=stop_after_attempt(2), 
                     wait=wait_exponential(multiplier=1, min=2, max=5),
                     retry=retry_if_exception_type((PlaywrightTimeoutError, Exception))
                 )
                 async def fetch_results_with_retry():
-                    self._log(f"[LINK] Acessando URL base...")
-                    # Force form submission via injection (reduced timeout to 30s)
-                    await page.goto(self.base_url, timeout=30000)
+                    # We are already on the page (or a result page). 
+                    # Use JS to submit form for the new date.
+                    
+                    self._log(f"Pesquisando por {current_date}...")
+                    
+                    # Check if we are still on a valid page context
+                    try:
+                        url = page.url
+                    except:
+                        # If lost context, reload base
+                        self._log("Contexto perdido. Recarregando URL base...")
+                        await page.goto(self.base_url, timeout=30000)
+
+                    js_script = f"""
+                        var f = document.createElement('form'); f.action='md_epubli_controlador.php?acao=materias_pesquisar'; f.method='POST';
+                        var i1=document.createElement('input');i1.name='hdnDataPublicacao';i1.value='{current_date}';f.appendChild(i1);
+                        var i2=document.createElement('input');i2.name='hdnOrgaoFiltro';i2.value='{self.orgao_id}';f.appendChild(i2);
+                        var i3=document.createElement('input');i3.name='hdnModoPesquisa';i3.value='DATA';f.appendChild(i3);
+                        var i4=document.createElement('input');i4.name='hdnVisualizacao';i4.value='L';f.appendChild(i4);
+                        document.body.appendChild(f); f.submit();
+                    """
                     
                     try:
-                        await page.evaluate(f"""
-                            var f = document.createElement('form'); f.action='md_epubli_controlador.php?acao=materias_pesquisar'; f.method='POST';
-                            var i1=document.createElement('input');i1.name='hdnDataPublicacao';i1.value='{current_date}';f.appendChild(i1);
-                            var i2=document.createElement('input');i2.name='hdnOrgaoFiltro';i2.value='{self.orgao_id}';f.appendChild(i2);
-                            var i3=document.createElement('input');i3.name='hdnModoPesquisa';i3.value='DATA';f.appendChild(i3);
-                            var i4=document.createElement('input');i4.name='hdnVisualizacao';i4.value='L';f.appendChild(i4);
-                            document.body.appendChild(f); f.submit();
-                        """)
-                        
-                        self._log(f"Aguardando resultados...")
-                        await page.wait_for_selector('div.dadosDocumento', state="attached", timeout=10000)
+                        # Expect navigation because form submit reloads the page (or goes to results)
+                        async with page.expect_navigation(timeout=30000):
+                            await page.evaluate(js_script)
+                    except PlaywrightTimeoutError:
+                         self._log("[AVISO] Timeout na navegação do formulário. Verificando se carregou...")
+                         # Sometimes it loads but the event isn't fired cleanly? 
+                         # Verify if selectors exist
+                         pass
+
+                    
+                    # Wait for results or 'no results' message
+                    # We wait for EITHER dadosDocumento OR a specific body text indicating no results
+                    # But wait_for_selector only waits for one.
+                    # Best approach: wait for load state 'domcontentloaded' then check.
+                    
+                    # await page.wait_for_load_state('domcontentloaded') # expect_navigation already does this mostly
+                    
+                    self._log(f"Aguardando elementos ou mensagem de erro...")
+                    
+                    # Fast check for results
+                    try:
+                        # Optimization: Wait only 3s first. If results take longer, we catch and check "no results".
+                        # If "no results" also absent, we wait longer for results (slow connection).
+                        await page.wait_for_selector('div.dadosDocumento', state="attached", timeout=3000)
                         elementos = await page.query_selector_all('div.dadosDocumento')
                         self._log(f"Encontrados {len(elementos)} elementos no HTML")
                         return elementos
-                    except PlaywrightTimeoutError:
-                         # Check for various "no results" patterns
+                    except:
+                        # If not found quickly, check for "No results" text
                          content = await page.content()
                          no_results_patterns = [
                              "Nenhum registro encontrado",
@@ -461,13 +555,20 @@ class DiarioScraper:
                              self._log(f"[INFO] Nenhum registro encontrado para {current_date}")
                              return []
                          
-                         # Save debug html to see what happened
+                         # If neither, maybe it's just slow? Wait a bit longer?
+                         # Or maybe it's an error page.
+                         # Let's try waiting a bit more for selector if connection is slow
                          try:
-                             with open(os.path.join(self.logs_dir, f"debug_html_{current_date.replace('/','-')}.html"), "w", encoding='utf-8') as f:
-                                 f.write(content)
-                         except: pass
-                         
-                         raise # Re-raise if it was a real timeout (page didn't load or structure changed)
+                             await page.wait_for_selector('div.dadosDocumento', state="attached", timeout=10000)
+                             return await page.query_selector_all('div.dadosDocumento')
+                         except:
+                             # Real timeout or error
+                             safe_date = current_date.replace('/', '-')
+                             try:
+                                 with open(os.path.join(self.logs_dir, f"debug_html_{safe_date}.html"), "w", encoding='utf-8') as f:
+                                     f.write(content)
+                             except: pass
+                             raise Exception("Timeout ou erro ao buscar resultados (seletor não encontrado).")
                 
                 elementos = []
                 try:
@@ -562,6 +663,38 @@ class DiarioScraper:
                             soup = BeautifulSoup(content, 'html.parser')
                             
                             details = self.extract_details(soup)
+                            
+                            # Integração com Inteligência Artificial (Gemini)
+                            try:
+                                import sys
+                                import os
+                                sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+                                from ai_extractor import is_ai_enabled, extract_with_gemini
+                                
+                                if is_ai_enabled() and details.get('sintese'):
+                                    self._log(f"Iniciando decodificação com IA para Documento {item['doc_id']}...")
+                                    ai_data = await extract_with_gemini(details['sintese'])
+                                    if ai_data:
+                                        self._log(f"IA decodificou documento {item['doc_id']} com sucesso.")
+                                        if ai_data.get('contractor') and ai_data['contractor'] != '-': details['contractor'] = ai_data['contractor']
+                                        if ai_data.get('company_doc') and ai_data['company_doc'] != '-': details['doc_fiscal'] = ai_data['company_doc']
+                                        if ai_data.get('object_text') and ai_data['object_text'] != '-': details['explicit_object'] = ai_data['object_text']
+                                        if ai_data.get('validity_start') and ai_data['validity_start'] != '-': details['validade_inicio'] = ai_data['validity_start']
+                                        if ai_data.get('validity_end') and ai_data['validity_end'] != '-': details['validade_fim'] = ai_data['validity_end']
+                                        if ai_data.get('modality') and ai_data['modality'] != '-': 
+                                            details['modality'] = ai_data['modality'].upper()
+                                            if "DIVERSOS" in details['modality'] or "ATA" in details['modality']:
+                                                details['tipo_doc'] = 'DIVERSOS'
+                                            elif "ACORDO DE COOPERA" in details['modality']:
+                                                # Só sobrepõe para acordo se o regex original não tiver cravado como DIVERSOS
+                                                if details.get('tipo_doc') != 'DIVERSOS':
+                                                    details['tipo_doc'] = 'ACORDO_COOPERACAO'
+                                        
+                                        if ai_data.get('value') and ai_data['value'] != '-': details['valor'] = ai_data['value']
+                                        if ai_data.get('contract_number') and ai_data['contract_number'] != '-': details['num_contrato'] = ai_data['contract_number']
+                            except Exception as e_ai:
+                                self._log(f"Erro na IA para doc {item['doc_id']}: {e_ai}")
+                               
                             
                             link_pdf = item['url']
                             if details['integra_id']:

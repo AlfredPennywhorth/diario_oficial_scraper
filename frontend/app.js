@@ -57,8 +57,8 @@ function renderAll(results) {
 function startSearch() {
     const startRaw = document.getElementById('startDate').value;
     const endRaw = document.getElementById('endDate').value;
-    const termsRaw = document.getElementById('searchTerms').value;
-    const terms = termsRaw.split('\n').map(t => t.trim()).filter(t => t.length > 0);
+    const checkboxes = document.querySelectorAll('input[name="searchTerm"]:checked');
+    const terms = Array.from(checkboxes).map(cb => cb.value);
 
     if (!startRaw || !endRaw) {
         alert("Por favor, preencha as datas.");
@@ -115,6 +115,7 @@ function determineType(item) {
         // Fallback inference
         const isApostilamento = fullTerm.includes('APOSTILAMENTO');
         const isAditamento = item.amendment_number || fullTerm.includes('ADITAMENTO');
+        const isAcordoCoop = fullTerm.includes('ACORDO DE COOPERAÇÃO') || fullTerm.includes('ACORDO DE COOPERACAO');
         const isParceria = fullTerm.includes('FOMENTO') || fullTerm.includes('COLABORAÇÃO') || fullTerm.includes('COOPERAÇÃO') || fullTerm.includes('TERMO DE COLABORAÇÃO');
         const isDoacao = fullTerm.includes('DOAÇÃO') || fullTerm.includes('COMODATO');
         const isEmpenho = fullTerm.includes('EMPENHO');
@@ -126,6 +127,7 @@ function determineType(item) {
 
         if (isApostilamento) tipo = 'APOSTILAMENTO';
         else if (isAditamento) tipo = 'ADITAMENTO';
+        else if (isAcordoCoop) tipo = 'ACORDO_COOPERACAO';
         else if (isParceria) tipo = 'PARCERIA';
         else if (isDoacao) tipo = 'DOACAO';
         else if (isEmpenho) tipo = 'EMPENHO';
@@ -145,10 +147,10 @@ function determineType(item) {
         icon = 'fa-file-pen';
         label = item.amendment_number ? `ADITAMENTO ${item.amendment_number}` : 'ADITAMENTO';
     }
-    else if (tipo === 'PARCERIA') {
+    else if (tipo === 'PARCERIA' || tipo === 'ACORDO_COOPERACAO') {
         visualClass = 'parceria';
         icon = 'fa-handshake';
-        label = 'PARCERIA';
+        label = tipo === 'ACORDO_COOPERACAO' ? 'ACORDO COOPERAÇÃO' : 'PARCERIA';
     }
     else if (tipo === 'DOACAO') {
         visualClass = 'doacao';
@@ -414,6 +416,37 @@ function renderTextView(results) {
             html += P("Valor:", item.value || 'Sem efeito financeiros');
         }
 
+        // --- LAYOUT ACORDO DE COOPERAÇÃO ---
+        else if (tipo === 'ACORDO_COOPERACAO') {
+            html += `<p><strong>Número do processo: </strong> <a href="${item.link_html}" target="_blank" style="color:blue;text-decoration:none">${item.process_number || '-'}</a></p>`;
+
+            const numAcordo = item.contract_number ? item.contract_number.replace(/^0*/, '').padStart(3, '0') + '/' + new Date().getFullYear().toString() : "S/N"; // formatting NNN/AAAA loosely or using what comes. Actually, let's format it properly:
+            
+            // Format to NNN/AAAA if possible
+            let formattedNum = item.contract_number || "S/N";
+            if (formattedNum !== "S/N" && formattedNum.includes('/')) {
+                let parts = formattedNum.split('/');
+                let nnn = parts[0].padStart(3, '0');
+                let aaaa = parts[1];
+                if (aaaa.length === 2 && parseInt(aaaa) > 10) aaaa = "20" + aaaa;
+                formattedNum = `${nnn}/${aaaa}`;
+            }
+
+            html += `<p>
+                 <strong>Número do termo: </strong> ACORDO DE COOPERAÇÃO <a href="${item.link_pdf}" target="_blank" style="color:blue;text-decoration:none">${formattedNum}</a>
+             </p>`;
+
+            const orgaoCompleto = `${item.contractor || '-'} ${item.company_doc && item.company_doc !== '-' ? ', CNPJ nº ' + item.company_doc : ''}`;
+            html += P("Nome do órgão/instituição:", orgaoCompleto);
+            html += P("Objeto:", objText);
+            html += P("Data da Assinatura:", item.validity_start || '-');
+            html += P("Data da Publicação:", item.date);
+
+            const vigInicio = item.validity_start || '-';
+            const vigFim = item.validity_end || '-';
+            html += P("Vigência:", `de ${vigInicio} a ${vigFim}`);
+        }
+
         // --- LAYOUT PARCERIA (Convênios, Fomento) ---
         else if (tipo === 'PARCERIA') {
             html += `<p><strong>• Processo SEI: </strong> <a href="${item.link_html}" target="_blank" style="color:blue;text-decoration:none">${item.process_number || '-'}</a></p>`;
@@ -507,7 +540,7 @@ async function loadCurrentVersion() {
         const data = await response.json();
         const versionFooter = document.getElementById('versionFooter');
         if (versionFooter && data.version) {
-            versionFooter.innerHTML = `v${data.version} (Portable)`;
+            versionFooter.innerHTML += ` | API: v${data.version}`;
         }
     } catch (error) {
         console.error('Erro ao carregar versão:', error);

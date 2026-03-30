@@ -9,7 +9,7 @@ from typing import Optional, Dict
 logger = logging.getLogger(__name__)
 
 # Versão atual do aplicativo (atualizar manualmente a cada release)
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 # URL do arquivo de metadados de versão no GitHub
 # URL do arquivo de metadados de versão no GitHub

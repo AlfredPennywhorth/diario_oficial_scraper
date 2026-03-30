@@ -1,0 +1,5 @@
+2026-02-18
+https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/tag/v1.3.1
+Otimização de performance: buscas até 6x mais rápidas.
+
+n

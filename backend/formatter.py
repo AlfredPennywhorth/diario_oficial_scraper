@@ -267,9 +267,38 @@ class DiarioFormatter:
         <span class="label">Data da Assinatura:</span> <span class="val">{r.validity_start}</span><br>
         <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
         <span class="label">Valor:</span> <span class="val">{r.value}</span><br>
-        <div style="margin-top: 10px;">
-             <a href="{r.link_pdf}" target="_blank">📄 Ver Documento</a> | <a href="{r.link_html}" target="_blank">🔗 Ver no Diário</a>
+        </div>"""
+
+    def formatar_acordo_cooperacao(self, r: SearchResult) -> str:
+        """Formata card de Acordo de Cooperação"""
+        # Format the contract number to NNN/AAAA
+        formatted_num = r.contract_number if r.contract_number else "S/N"
+        if formatted_num != "S/N" and "/" in formatted_num:
+            parts = formatted_num.split("/")
+            nnn = parts[0].zfill(3)
+            aaaa = parts[1]
+            if len(aaaa) == 2 and int(aaaa) > 10:
+                aaaa = "20" + aaaa
+            formatted_num = f"{nnn}/{aaaa}"
+
+        orgao_completo = r.contractor if r.contractor else "-"
+        if r.company_doc and r.company_doc != "-":
+            orgao_completo += f", CNPJ nº {r.company_doc}"
+
+        vig_inicio = r.validity_start if r.validity_start else "-"
+        vig_fim = r.validity_end if r.validity_end else "-"
+
+        return f"""<div class="card parceria">
+        <div style="background-color: #e8f5e9; padding: 5px; border-bottom: 1px solid #ddd; margin-bottom: 10px;">
+            <strong>🤝 ACORDO DE COOPERAÇÃO</strong>
         </div>
+        <p><strong>Número do processo: </strong> <a href="{r.link_html}" target="_blank">{r.process_number}</a></p>
+        <p><strong>Número do termo: </strong> ACORDO DE COOPERAÇÃO <a href="{r.link_pdf}" target="_blank">{formatted_num}</a></p>
+        <p><strong>Nome do órgão/instituição: </strong> {orgao_completo}</p>
+        <p><strong>Objeto: </strong> {r.object_text}</p>
+        <p><strong>Data da Assinatura: </strong> {r.validity_start if r.validity_start else '-'}</p>
+        <p><strong>Data da Publicação: </strong> {r.date}</p>
+        <p><strong>Vigência: </strong> de {vig_inicio} a {vig_fim}</p>
         </div>"""
 
     def formatar_destaque(self, r: SearchResult) -> str:
@@ -312,6 +341,9 @@ class DiarioFormatter:
                 continue
             elif r.doc_type == "HOMOLOGACAO":
                 html += self.formatar_destaque(r)
+                continue
+            elif r.doc_type == "ACORDO_COOPERACAO":
+                html += self.formatar_acordo_cooperacao(r)
                 continue
             elif r.doc_type == "DIVERSOS":
                  continue # User implies "Outros" might be excluded or just put in "Outros" group?

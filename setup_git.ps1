@@ -5,8 +5,8 @@ $env:Path += ";C:\Program Files\Git\bin"
 Write-Host "Configurando Git..." -ForegroundColor Cyan
 
 # Configurar nome e email (EDITE COM SEUS DADOS)
-git config --global user.name "AlfredPennyworth"
-git config --global user.email "seu.email@exemplo.com"  # ALTERE ESTE EMAIL!
+git config --global user.name "AlfredPennywhorth"
+git config --global user.email "aws311274@gmail.com"  # ALTERE ESTE EMAIL!
 
 Write-Host "`nVerificando status atual..." -ForegroundColor Cyan
 git status 2>$null
@@ -22,7 +22,7 @@ if ($LASTEXITCODE -ne 0) {
     git commit -m "Initial commit"
     
     Write-Host "`nConectando ao repositório remoto..." -ForegroundColor Yellow
-    git remote add origin https://github.com/AlfredPennyworth/diario_oficial_scraper.git
+    git remote add origin https://github.com/AlfredPennywhorth/diario_oficial_scraper.git
     
     Write-Host "`nRenomeando branch para main..." -ForegroundColor Yellow
     git branch -M main
@@ -30,7 +30,8 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "`nFazendo push para GitHub..." -ForegroundColor Green
     Write-Host "IMPORTANTE: Você precisará autenticar com GitHub!" -ForegroundColor Red
     git push -u origin main
-} else {
+}
+else {
     Write-Host "`nRepositório Git já inicializado!" -ForegroundColor Green
     Write-Host "Fazendo push das alterações..." -ForegroundColor Yellow
     git push

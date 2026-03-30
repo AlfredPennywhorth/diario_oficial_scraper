@@ -4,3 +4,5 @@ playwright
 beautifulsoup4
 pydantic
 tenacity
+google-generativeai
+python-dotenv

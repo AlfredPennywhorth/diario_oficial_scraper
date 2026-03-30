@@ -1,30 +1,45 @@
-"""
-Script para criar release do Diário Oficial Scraper
-Automatiza o processo de build e criação do pacote distribuível
-"""
+
 import os
 import shutil
 import json
 import subprocess
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # Importar versão do backend
 sys.path.insert(0, 'backend')
 from version import VERSION
 
 print("=" * 60)
-print("DIÁRIO OFICIAL SCRAPER - SCRIPT DE RELEASE")
+print("DIÁRIO OFICIAL SCRAPER - BUILD AUTOMÁTICO")
 print("=" * 60)
 print(f"\nVersão: {VERSION}")
 print()
+
+import time
+
+def remove_readonly(func, path, excinfo):
+    os.chmod(path, 0o777)
+    func(path)
 
 # 1. Limpar builds anteriores
 print("1. Limpando builds anteriores...")
 for folder in ['build', 'dist']:
     if os.path.exists(folder):
-        shutil.rmtree(folder)
-        print(f"   [OK] {folder}/ removido")
+        print(f"   Tentando remover {folder}...")
+        for i in range(3):
+            try:
+                shutil.rmtree(folder, onerror=remove_readonly)
+                print(f"   [OK] {folder}/ removido")
+                break
+            except PermissionError:
+                if i < 2:
+                    print(f"   [AVISO] Arquivo em uso. Tentando novamente em 2s...")
+                    time.sleep(2)
+                else:
+                    print(f"   [ERRO] Falha ao remover {folder}. Feche programas que possam estar usando a pasta.")
+                    sys.exit(1)
 
 # 2. Executar PyInstaller
 print("\n2. Compilando com PyInstaller...")
@@ -73,23 +88,16 @@ print(f"   [OK] {zip_name}.zip criado")
 print("\n4. Gerando version.json...")
 version_data = {
     "version": VERSION,
-    "release_date": input("   Data do release (YYYY-MM-DD): ").strip(),
-    "download_url": input("   URL de download (GitHub Release): ").strip(),
-    "changelog": [],
+    "release_date": datetime.now().strftime("%Y-%m-%d"),
+    "download_url": f"https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v{VERSION}/DiarioScraper-v{VERSION}.zip",
+    "changelog": [
+        "Integração com Inteligência Artificial (Google Gemini) para extração de dados",
+        "Melhoria na classificação de Acordos de Cooperação",
+        "Filtros de tipo de documento via checkbox",
+        "Cálculo automático de vigência quando apenas o prazo é mencionado"
+    ],
     "critical": False
 }
-
-# Pedir changelog
-print("\n   Digite as mudanças (uma por linha, linha vazia para terminar):")
-while True:
-    change = input("   - ").strip()
-    if not change:
-        break
-    version_data["changelog"].append(change)
-
-# Perguntar se é crítica
-critical = input("\n   Esta é uma atualização crítica? (s/N): ").strip().lower()
-version_data["critical"] = critical == 's'
 
 # Salvar version.json
 with open('version.json', 'w', encoding='utf-8') as f:
@@ -98,14 +106,5 @@ print("   [OK] version.json criado")
 
 # 6. Resumo final
 print("\n" + "=" * 60)
-print("RELEASE CONCLUÍDO!")
+print("BUILD CONCLUÍDO!")
 print("=" * 60)
-print(f"\nArquivos gerados:")
-print(f"  * {zip_name}.zip ({os.path.getsize(f'{zip_name}.zip') / 1024 / 1024:.1f} MB)")
-print(f"  * version.json")
-print(f"\nPróximos passos:")
-print(f"  1. Crie uma nova release no GitHub")
-print(f"  2. Faça upload do {zip_name}.zip")
-print(f"  3. Faça upload do version.json para o repositório (branch main)")
-print(f"  4. Atualize a URL em backend/version.py se necessário")
-print()
