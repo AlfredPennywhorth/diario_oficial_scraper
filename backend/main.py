@@ -13,6 +13,7 @@ import logging
 import traceback
 import webbrowser
 import threading
+import multiprocessing
 from datetime import datetime
 
 from scraper_service import DiarioScraper
@@ -178,32 +179,65 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info("WebSocket disconnected")
 
 if __name__ == "__main__":
+    # Suporte para congelamento do executável (PyInstaller) no Windows
+    # OBRIGATÓRIO para evitar múltiplas instâncias e travamentos ao usar multiprocessing/playwright
+    multiprocessing.freeze_support()
+    
+    print("\n" + "="*60)
+    print(" INICIALIZANDO DIARIO OFICIAL SCRAPER")
+    print("="*60)
+    
     try:
         # Fix for Windows + Playwright + Uvicorn
         # We must force ProactorEventLoop and avoid reload=True to prevent subprocess issues
         if sys.platform == "win32":
             import asyncio
             from asyncio.windows_events import ProactorEventLoop
+            
+            # Garantir que o loop anterior seja fechado se existir
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.stop()
+            except:
+                pass
+                
             loop = ProactorEventLoop()
             asyncio.set_event_loop(loop)
-            logger.info("Forced ProactorEventLoop in __main__")
+            print("[OK] Loop de eventos Proactor configurado para Windows")
 
-        logger.info("Starting server without reload (required for Playwright on Windows)...")
+        print("[INFO] Iniciando servidor web na porta 8085...")
+        print("[INFO] Playwright será inicializado na primeira pesquisa.")
         
-        # Open browser automatically after 2 seconds
+        # Open browser automatically after 2.5 seconds
         def open_browser():
-            print("Abrindo navegador em http://127.0.0.1:8085 ...")
-            webbrowser.open("http://127.0.0.1:8085")
+            try:
+                time.sleep(2.5)
+                url = "http://127.0.0.1:8085"
+                print(f"[INFO] Abrindo navegador em {url} ...")
+                webbrowser.open(url)
+            except Exception as eb:
+                print(f"[AVISO] Não foi possível abrir o navegador automaticamente: {eb}")
+                print(f"[DICA] Abra manualmente: http://127.0.0.1:8085")
         
-        threading.Timer(2.0, open_browser).start()
+        import time
+        threading.Thread(target=open_browser, daemon=True).start()
 
         # Pass the app object directly to avoid import errors in frozen state
-        uvicorn.run(app, host="127.0.0.1", port=8085, reload=False)
+        # log_level="info" ensures we see uvicorn startup logs
+        uvicorn.run(app, host="127.0.0.1", port=8085, reload=False, log_level="info")
     
     except Exception as e:
-        print("\n" + "="*60)
-        print("ERRO FATAL NO SERVIDOR:")
-        print("="*60)
+        print("\n" + "!"*60)
+        print(" ERRO FATAL NA INICIALIZAÇÃO:")
+        print("!"*60)
         traceback.print_exc()
-        print("="*60)
+        print("!"*60)
+        
+        # Log error to file
+        try:
+            with open("startup_error.log", "a", encoding="utf-8") as f:
+                f.write(f"\n[{datetime.now()}] FATAL STARTUP ERROR: {str(e)}\n{traceback.format_exc()}\n")
+        except: pass
+        
         input("\nPressione ENTER para fechar a janela...")

@@ -91,6 +91,7 @@ version_data = {
     "release_date": datetime.now().strftime("%Y-%m-%d"),
     "download_url": f"https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v{VERSION}/DiarioScraper-v{VERSION}.zip",
     "changelog": [
+        "Correção crítica: Resolvido travamento na inicialização do executável no Windows",
         "Integração com Inteligência Artificial (Google Gemini) para extração de dados",
         "Melhoria na classificação de Acordos de Cooperação",
         "Filtros de tipo de documento via checkbox",
