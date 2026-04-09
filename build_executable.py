@@ -91,11 +91,11 @@ version_data = {
     "release_date": datetime.now().strftime("%Y-%m-%d"),
     "download_url": f"https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v{VERSION}/DiarioScraper-v{VERSION}.zip",
     "changelog": [
-        "Correção crítica: Resolvido travamento na inicialização do executável no Windows",
-        "Integração com Inteligência Artificial (Google Gemini) para extração de dados",
-        "Melhoria na classificação de Acordos de Cooperação",
-        "Filtros de tipo de documento via checkbox",
-        "Cálculo automático de vigência quando apenas o prazo é mencionado"
+        "Refatoração completa do parser: modularizado e mais robusto",
+        "Implementação de Blindagem: alertas automáticos para campos críticos ausentes",
+        "Controle de Execução: prevenção de múltiplas instâncias simultâneas",
+        "Resiliência: salvamento automático de resultados parciais em JSON",
+        "Isolamento da IA: chamadas opcionais com timeout de 30s e blindagem contra falhas"
     ],
     "critical": False
 }

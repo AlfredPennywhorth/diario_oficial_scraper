@@ -9,12 +9,9 @@ from typing import Optional, Dict
 logger = logging.getLogger(__name__)
 
 # Versão atual do aplicativo (atualizar manualmente a cada release)
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 # URL do arquivo de metadados de versão no GitHub
-# URL do arquivo de metadados de versão no GitHub
-# INSTRUÇÕES: Após criar o repositório, substitua <usuario> e <repo> pelos valores corretos
-# Exemplo: "https://raw.githubusercontent.com/seuusuario/diario-scraper/main/version.json"
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/AlfredPennywhorth/diario_oficial_scraper/main/version.json"
 
 # Timeout para verificação de atualização (em segundos)
