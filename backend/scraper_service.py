@@ -367,7 +367,7 @@ class DiarioScraper:
 
     async def scrape(self, start_date: str | datetime, end_date: str | datetime, terms: list, status_callback=None, use_ai=True):
         if self.is_running:
-            raise RuntimeError("O robô já está em execução. Aguarde a finalização.")
+            raise RuntimeError("O scraper já está em execução. Aguarde a finalização.")
 
         self.is_running = True
         start_time = datetime.now()

@@ -11,7 +11,7 @@ Scraper local para coleta de publicações do Diário Oficial, com API FastAPI, 
 ## Instalação
 
 ```bash
-cd /home/runner/work/diario_oficial_scraper/diario_oficial_scraper
+cd /caminho/para/diario_oficial_scraper
 python -m pip install -r backend/requirements.txt
 python -m playwright install chromium
 ```
@@ -27,7 +27,7 @@ python -m playwright install chromium
 ## Execução
 
 ```bash
-cd /home/runner/work/diario_oficial_scraper/diario_oficial_scraper/backend
+cd /caminho/para/diario_oficial_scraper/backend
 python main.py
 ```
 
@@ -52,7 +52,7 @@ No dry-run:
 ## Validações recomendadas
 
 ```bash
-cd /home/runner/work/diario_oficial_scraper/diario_oficial_scraper
+cd /caminho/para/diario_oficial_scraper
 python -m compileall .
 python -m pip check
 python -m pytest -q

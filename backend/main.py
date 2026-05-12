@@ -24,8 +24,8 @@ from version import check_for_updates, get_current_version
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-HOST = "127.0.0.1"
-PORT = 8085
+HOST = os.getenv("HOST", "127.0.0.1")
+PORT = int(os.getenv("PORT", "8085"))
 ALLOWED_ORIGINS = [f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"]
 
 if getattr(sys, 'frozen', False):
