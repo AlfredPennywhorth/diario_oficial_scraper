@@ -1,20 +1,18 @@
-import os
 import json
 import logging
-from dotenv import load_dotenv
+import os
+
 import google.generativeai as genai
-from google.generativeai.types import generation_types
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-# Load environment variables
 load_dotenv()
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
-# Define the rigorous schema for our JSON extraction
 JSON_SCHEMA = """{
   "type": "object",
   "properties": {
@@ -58,22 +56,17 @@ JSON_SCHEMA = """{
   ]
 }"""
 
-# Using flash model for high speed and low latency
-# Free tier limitation: 15 Requests per Minute. 
-# We configure response schema to guarantee JSON.
 MODEL_NAME = "gemini-2.5-flash"
+
 
 def is_ai_enabled():
     return bool(API_KEY)
 
+
 async def extract_with_gemini(text: str) -> dict:
-    """
-    Calls Gemini API to extract structured fields from the raw unstructured text.
-    Returns a dictionary matching the SearchResult variables needed.
-    """
     if not is_ai_enabled():
         return {}
-        
+
     system_instruction = (
         "Você é um extrator de dados altamente preciso especializado no Diário Oficial de São Paulo. "
         "Sua função é ler o despacho/publicação e retornar ESTRITAMENTE um JSON plano com o schema fornecido. "
@@ -86,27 +79,21 @@ async def extract_with_gemini(text: str) -> dict:
         "4. CÁLCULO DE VIGÊNCIA (Muito Crítico): Se o texto informar um PRAZO (ex: 'prazo de vigência de 60 meses', 'prazo de 5 anos') mas NÃO ditar a data final, "
         "você DEVERÁ calcular a 'validity_end' somando o prazo à 'validity_start'. Retorne sempre o formato DD/MM/AAAA. NUNCA deixe 'validity_end' vazia se o texto mencionar um prazo!"
     )
-    
+
     try:
         model = genai.GenerativeModel(
             model_name=MODEL_NAME,
             system_instruction=system_instruction,
-            generation_config=genai.GenerationConfig(
-                response_mime_type="application/json",
-            )
+            generation_config=genai.GenerationConfig(response_mime_type="application/json"),
         )
-        
+
         prompt = f"Extraia os dados deste texto do Diário Oficial. Siga o schema exigido.\nTexto: {text}\nSchema exigido:\n{JSON_SCHEMA}"
-        
         response = await model.generate_content_async(prompt)
-        
-        # Validar e processar o JSON retornado
+
         result_text = response.text
         if result_text:
-            data = json.loads(result_text)
-            return data
-            
-    except Exception as e:
-        logger.error(f"Failed to extract with Gemini: {e}")
-        
+            return json.loads(result_text)
+    except Exception as exc:
+        logger.error("Failed to extract with Gemini: %s", exc)
+
     return {}

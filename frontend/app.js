@@ -59,6 +59,7 @@ function startSearch() {
     const endRaw = document.getElementById('endDate').value;
     const checkboxes = document.querySelectorAll('input[name="searchTerm"]:checked');
     const terms = Array.from(checkboxes).map(cb => cb.value);
+    const dryRun = document.getElementById('dryRunToggle')?.checked || false;
 
     if (!startRaw || !endRaw) {
         alert("Por favor, preencha as datas.");
@@ -76,7 +77,7 @@ function startSearch() {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             action: 'start_search',
-            payload: { start_date: start, end_date: end, terms: terms }
+            payload: { start_date: start, end_date: end, terms: terms, dry_run: dryRun }
         }));
     } else {
         alert("Sem conexão com o servidor. Aguarde a reconexão...");
