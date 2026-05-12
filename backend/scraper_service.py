@@ -250,7 +250,7 @@ class DiarioScraper:
                         dt_fim = dt_ini.replace(year=dt_ini.year + prazo_val, day=28)
                     validade_fim = dt_fim.strftime("%d/%m/%Y")
             except Exception as exc:
-                logger.debug("Falha ao calcular vigência por prazo: %s", exc)
+                logger.warning("Falha ao calcular vigência por prazo: %s", exc)
 
         data['validade_inicio'] = validade_inicio
         data['validade_fim'] = validade_fim
@@ -394,7 +394,8 @@ class DiarioScraper:
                         else:
                             browser = await p.chromium.launch(**launch_options)
                         break
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug("Falha ao iniciar navegador com canal %s: %s", channel or "chromium", exc)
                         continue
 
                 if not browser:

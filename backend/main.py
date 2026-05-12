@@ -25,7 +25,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 HOST = os.getenv("HOST", "127.0.0.1")
-PORT = int(os.getenv("PORT", "8085"))
+PORT_RAW = os.getenv("PORT", "8085")
+try:
+    PORT = int(PORT_RAW)
+except ValueError:
+    logger.warning("Valor inválido para PORT=%s. Usando 8085.", PORT_RAW)
+    PORT = 8085
 ALLOWED_ORIGINS = [f"http://{HOST}:{PORT}", f"http://localhost:{PORT}"]
 
 if getattr(sys, 'frozen', False):
