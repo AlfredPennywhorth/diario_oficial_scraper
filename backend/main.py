@@ -28,6 +28,8 @@ HOST = os.getenv("HOST", "127.0.0.1")
 PORT_RAW = os.getenv("PORT", "8085")
 try:
     PORT = int(PORT_RAW)
+    if not 1 <= PORT <= 65535:
+        raise ValueError
 except ValueError:
     logger.warning("Valor inválido para PORT=%s. Usando 8085.", PORT_RAW)
     PORT = 8085
