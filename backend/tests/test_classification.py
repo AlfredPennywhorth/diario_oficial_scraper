@@ -1,0 +1,115 @@
+import sys
+import os
+import re
+
+# Adicionar o diretório backend ao path para importar os módulos
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scraper_service import DiarioScraper
+from formatter import DiarioFormatter
+from models import SearchResult
+
+def run_tests():
+    scraper = DiarioScraper()
+    formatter = DiarioFormatter()
+    
+    print("=== INICIANDO TESTES DE CLASSIFICAÇÃO ===\n")
+
+    # CENÁRIO A: Dispensa que formaliza contrato
+    print("Cenário A: Dispensa + Formalização de Contrato")
+    text_a = """
+    Número do Processo: 7410.2026/0003170-2
+    Número da Publicação: DISPENSA 272026
+    Licitante Vencedor: EMPRESA BRASILEIRA DE CORREIOS E TELÉGRAFOS
+    Modalidade: DISPENSA
+    Objeto: referente à contratação de produtos e serviços... FORMALIZAÇÃO DO CONTRATO Nº 027/2026 (ECT - Contrato Múltiplo...)
+    """
+    data_a = {
+        "contractor": "EMPRESA BRASILEIRA DE CORREIOS E TELÉGRAFOS",
+        "modality": "DISPENSA",
+        "sintese": text_a,
+        "num_contrato": "DISPENSA 272026", # Simulando que veio do label
+        "tipo_doc": "OUTRO"
+    }
+    scraper._extract_contract_info(text_a, data_a)
+    scraper._classify_document(text_a, data_a)
+    
+    print(f"  -> Tipo: {data_a['tipo_doc']} (Esperado: CONTRATO)")
+    print(f"  -> Número: {data_a['num_contrato']} (Esperado: 027/2026)")
+    assert data_a['tipo_doc'] == 'CONTRATO'
+    assert data_a['num_contrato'] == '027/2026'
+
+    # CENÁRIO B: Dispensa sem contrato formal
+    print("\nCenário B: Dispensa Simples")
+    text_b = "DISPENSA DE LICITAÇÃO Nº 123/2026. Objeto: Compra de materiais de escritório."
+    data_b = {"modality": "DISPENSA", "sintese": text_b, "num_contrato": "-", "tipo_doc": "OUTRO"}
+    scraper._extract_contract_info(text_b, data_b)
+    scraper._classify_document(text_b, data_b)
+    print(f"  -> Tipo: {data_b['tipo_doc']} (Esperado: PEDIDO_COMPRA)")
+    assert data_b['tipo_doc'] == 'PEDIDO_COMPRA'
+
+    # CENÁRIO C: Termo Aditivo
+    print("\nCenário C: Termo Aditivo")
+    text_c = "EXTRATO DE TERMO DE ADITAMENTO Nº 054/25 ao Contrato nº 053/17. Objeto: Prorrogação."
+    data_c = {"modality": "DISPENSA", "sintese": text_c, "num_contrato": "-", "tipo_doc": "OUTRO"}
+    scraper._extract_contract_info(text_c, data_c)
+    scraper._classify_document(text_c, data_c)
+    print(f"  -> Tipo: {data_c['tipo_doc']} (Esperado: ADITAMENTO)")
+    print(f"  -> Aditamento: {data_c.get('num_aditamento')} (Esperado: 054/25)")
+    print(f"  -> Contrato Pai: {data_c.get('contrato_pai')} (Esperado: 053/17)")
+    assert data_c['tipo_doc'] == 'ADITAMENTO'
+    assert data_c['num_aditamento'] == '054/25'
+    assert data_c['contrato_pai'] == '053/17'
+
+    # CENÁRIO D: Pregão Comum
+    print("\nCenário D: Pregão")
+    text_d = "PREGÃO ELETRÔNICO Nº 100/2026. Objeto: Aquisição de veículos."
+    data_d = {"modality": "PREGÃO", "sintese": text_d, "num_contrato": "-", "tipo_doc": "OUTRO"}
+    scraper._extract_contract_info(text_d, data_d)
+    scraper._classify_document(text_d, data_d)
+    print(f"  -> Tipo: {data_d['tipo_doc']} (Esperado: PREGAO)")
+    assert data_d['tipo_doc'] == 'PREGAO'
+
+    # CENÁRIO E: Publicação Genérica
+    print("\nCenário E: Publicação Genérica")
+    text_e = "ESCLARECIMENTO Nº 01. Objeto: Resposta a questionamento sobre o edital."
+    data_e = {"modality": "PREGÃO", "sintese": text_e, "num_contrato": "-", "tipo_doc": "OUTRO"}
+    scraper._extract_contract_info(text_e, data_e)
+    scraper._classify_document(text_e, data_e)
+    print(f"  -> Tipo: {data_e['tipo_doc']} (Esperado: DIVERSOS)")
+    assert data_e['tipo_doc'] == 'DIVERSOS'
+
+    # CENÁRIO F: Acordo de Cooperação
+    print("\nCenário F: Acordo de Cooperação")
+    text_f = """
+    Número do processo: 7410.2023/0001792-5
+    ACORDO DE COOPERAÇÃO 013/25
+    Partícipe: FUNDAÇÃO INSTITUTO DE MOLÉSTIAS DO APARELHO DIGESTIVO E DA NUTRIÇÃO
+    CNPJ nº 61.062.212/0001-98
+    Objeto: CELEBRAÇÃO DE ACORDO DE COOPERAÇÃO PARA IMPLANTAÇÃO DA SINALIZAÇÃO DE ORIENTAÇÃO DE TRÁFEGO SERVIÇOS - ÁREA VILA MARIANA
+    Data da Assinatura: 17/11/2025
+    Vigência: de 17/11/2025 a 17/11/2030
+    """
+    data_f = {"modality": "-", "sintese": text_f, "num_contrato": "-", "tipo_doc": "OUTRO"}
+    scraper._extract_contract_info(text_f, data_f)
+    scraper._classify_document(text_f, data_f)
+    scraper._extract_dates(text_f, data_f)
+    
+    print(f"  -> Tipo: {data_f['tipo_doc']} (Esperado: ACORDO_COOPERACAO ou PARCERIA)")
+    print(f"  -> Termo: {data_f['num_contrato']} (Esperado: 013/25)")
+    print(f"  -> Início: {data_f['validade_inicio']} (Esperado: 17/11/2025)")
+    print(f"  -> Fim: {data_f['validade_fim']} (Esperado: 17/11/2030)")
+    
+    assert data_f['tipo_doc'] in ['ACORDO_COOPERACAO', 'PARCERIA']
+    assert '013/25' in data_f['num_contrato']
+    assert data_f['validade_inicio'] == '17/11/2025'
+    assert data_f['validade_fim'] == '17/11/2030'
+
+    print("\n=== TODOS OS TESTES PASSARAM COM SUCESSO! ===")
+
+if __name__ == "__main__":
+    try:
+        run_tests()
+    except Exception as e:
+        print(f"\n❌ ERRO NOS TESTES: {e}")
+        sys.exit(1)

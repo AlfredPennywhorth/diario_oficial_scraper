@@ -21,12 +21,15 @@ class DiarioFormatter:
                 background: #fff; 
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
             }
-            .compra { border-left: 5px solid #004376; }
-            .contrato { border-left: 5px solid #17a2b8; background-color: #fcfcfc; }
-            .aditamento { border-left: 5px solid #28a745; background-color: #f9fff9; }
+            .compra { border-left: 5px solid #3b82f6; }
+            .contrato { border-left: 5px solid #10b981; background-color: #fcfcfc; }
+            .aditamento { border-left: 5px solid #f59e0b; background-color: #fff9f0; }
+            .parceria { border-left: 5px solid #22c55e; background-color: #f6fff6; }
+            .doacao { border-left: 5px solid #a855f7; background-color: #fdf6ff; }
+            .destaque { border: 2px solid #ffc107; background-color: #fffdf0; }
             .label { font-weight: bold; color: #333; }
             .val { color: #000; }
-            a { text-decoration: none; color: #0056b3; font-weight: bold; }
+            a { text-decoration: none; color: #2563eb; font-weight: bold; }
         </style>
         """
     
@@ -40,37 +43,39 @@ class DiarioFormatter:
                          r'\1.***.***-\4', texto)
         return texto
     
-    def classificar_tipo(self, summary: str) -> str:
-        """Classifica o tipo de publicação com base no contexto"""
+    def classificar_tipo(self, summary: str, doc_type: str = "OUTRO") -> str:
+        """Classifica o tipo de publicação com base no contexto e no doc_type do backend"""
+        # Se o backend já classificou como algo específico (não OUTRO ou DIVERSOS genérico), respeitamos
+        if doc_type in ["ADITAMENTO", "CONTRATO", "PARCERIA", "ACORDO_COOPERACAO", "PEDIDO_COMPRA", "PREGAO", "HOMOLOGACAO", "DIVERSOS"]:
+            return doc_type
+
         txt = summary.upper()
         
-        # Prioridade 1: Verificar formalizações explícitas de contrato
-        if "FORMALIZAÇÃO DO CONTRATO" in txt or "FORMALIZADO EM" in txt:
-            return "CONTRATO"
-        
-        # Prioridade 2: Aditamentos
-        if "ADITAMENTO" in txt or "TERMO ADITIVO" in txt:
+        # Hierarquia manual como fallback (Sincronizada com backend)
+        if any(x in txt for x in ["ADITAMENTO", "TERMO ADITIVO", "APOSTILAMENTO"]):
             return "ADITAMENTO"
         
-        # Prioridade 3: Contratos em geral (verificar contexto)
-        if "CONTRATO" in txt and "ADITAMENTO" not in txt:
-            # Se é formalização ou celebração, definitivamente é contrato
-            if any(palavra in txt for palavra in ["FORMALIZAÇÃO", "CELEBRADO", "ASSINATURA DO CONTRATO", "NÚMERO DO CONTRATO"]):
-                return "CONTRATO"
-            # Se menciona "contrato" mas não tem contexto de formalização, pode ser apenas referência
-            # Neste caso, continua verificando outras possibilidades
-        
-        # Prioridade 4: Licitações (pregão, homologação, etc)
-        if "PREGÃO" in txt or "LICITAÇÃO" in txt or "HOMOLOG" in txt:
-            # Se já foi identificado como contrato acima, não sobrescrever
-            # Se chegou aqui, é porque não tinha contexto forte de contrato
-            return "LICITACAO"
-        
-        # Prioridade 5: Se tem "CONTRATO" mas não se encaixou em nenhum dos acima
-        if "CONTRATO" in txt:
+        if any(x in txt for x in ["CONTRATO Nº", "CONTRATO N.º", "CONTRATO N°", "FORMALIZAÇÃO DO CONTRATO", "EXTRATO DE CONTRATO"]):
             return "CONTRATO"
+
+        if any(x in txt for x in ["ACORDO DE COOPERAÇÃO", "TERMO DE PARCERIA", "CONVÊNIO", "TERMO DE FOMENTO"]):
+            return "PARCERIA"
+
+        termos_diversos = ["ESCLARECIMENTO", "QUESTIONAMENTO", "IMPUGNAÇ", "IMPUGNAC", "NOTIFICAÇÃO", "DESPACHO", "PAGAMENTO"]
+        if any(x in txt for x in termos_diversos):
+            return "DIVERSOS"
         
-        return "OUTROS"
+        termos_fortes_pregao = [
+            "PREGÃO", "PREGAO", "ABERTURA DE LICITAÇÃO", "AVISO DE LICITAÇÃO", 
+            "HOMOLOGAÇÃO DE PREGÃO", "ATA DE REGISTRO DE PREÇOS", "SISTEMA DE REGISTRO DE PREÇOS"
+        ]
+        if any(x in txt for x in termos_fortes_pregao):
+            return "PREGAO"
+            
+        if any(x in txt for x in ["DISPENSA"]):
+            return "PEDIDO_COMPRA"
+        
+        return "DIVERSOS"
     
     def extrair_numero_aditamento(self, texto: str) -> str:
         """Extrai número do aditamento"""
@@ -103,21 +108,14 @@ class DiarioFormatter:
     def extrair_data_abertura(self, texto: str) -> str:
         """Extrai data de abertura da licitação"""
         txt = re.sub(r'\s+', ' ', texto)
-        
         padrao_data = r'(?:abertura|sessão|disputa|lances|ocorrerá).*?(?:dia|em|at[ée])\s*([\d]{2}[/.][\d]{2}[/.][\d]{4})'
         match = re.search(padrao_data, txt, re.IGNORECASE)
         if match:
             return match.group(1)
-        
-        match_label = re.search(r'Data da sessão\s*([\d]{2}[/.][\d]{2}[/.][\d]{4})', txt, re.IGNORECASE)
-        if match_label:
-            return match_label.group(1)
-        
         return "Ver Edital"
     
     def extrair_vigencia(self, texto: str) -> str:
         """Extrai período de vigência"""
-        # Padrão 1: "Data de início e término... X e Y"
         m_inicio_fim = re.search(
             r'Data de início e t[ée]rmino.*?:?\s*([\d]{2}[/.][\d]{2}[/.][\d]{4})\s*e\s*([\d]{2}[/.][\d]{2}[/.][\d]{4})',
             texto, re.IGNORECASE
@@ -125,18 +123,12 @@ class DiarioFormatter:
         if m_inicio_fim:
             return f"{m_inicio_fim.group(1)} a {m_inicio_fim.group(2)}"
         
-        # Padrão 2: "período de X a Y"
         m_periodo = re.search(
             r'período de\s*([\d]{2}[/.][\d]{2}[/.][\d]{4})\s*a\s*([\d]{2}[/.][\d]{2}[/.][\d]{4})',
             texto, re.IGNORECASE
         )
         if m_periodo:
             return f"{m_periodo.group(1)} a {m_periodo.group(2)}"
-        
-        # Padrão 3: Prazo em meses
-        m_meses = re.search(r'pelo prazo de (?:mais)?\s*(\d+.*?)meses', texto)
-        if m_meses:
-            return f"{m_meses.group(1)}meses (ver datas no contrato)"
         
         return "Ver Contrato"
     
@@ -155,44 +147,55 @@ class DiarioFormatter:
     
     def formatar_aditamento(self, r: SearchResult) -> str:
         """Formata card de aditamento"""
-        num_adit = self.extrair_numero_aditamento(r.summary)
-        num_orig = self.extrair_numero_contrato_origem(r.summary)
+        num_adit = r.amendment_number if r.amendment_number else self.extrair_numero_aditamento(r.summary)
+        num_orig = r.parent_contract if r.parent_contract else self.extrair_numero_contrato_origem(r.summary)
         
         contratada_full = "Ver íntegra"
         if r.contractor and r.contractor != "-":
-            doc = self.anonimizar_cpf(r.value if r.value else "")
+            doc = self.anonimizar_cpf(r.company_doc if r.company_doc else "")
             contratada_full = f"{r.contractor}, CNPJ/CPF {doc}"
         
-        vigencia = self.extrair_vigencia(r.summary)
-        modalidade = self.extrair_modalidade(r.summary)
+        vigencia = f"{r.validity_start} a {r.validity_end}" if r.validity_end != "-" else self.extrair_vigencia(r.summary)
+        modalidade = r.modality if r.modality != "-" else self.extrair_modalidade(r.summary)
         
         return f"""<div class="card aditamento">
+        <div style="background-color: #fff9f0; padding: 5px; border-bottom: 1px solid #f59e0b; margin-bottom: 10px;">
+            <strong>📑 TERMO DE ADITAMENTO / APOSTILAMENTO</strong>
+        </div>
         • <span class="label">Processo SEI:</span> <span class="val">{r.process_number}</span><br>
-        Aditamento nº <a href="{r.link_pdf}">{num_adit}</a> ao Contrato nº {num_orig}<br>
+        <strong>Aditamento nº </strong> <a href="{r.link_pdf}">{num_adit}</a> <strong>ao Contrato nº </strong> {num_orig}<br>
         <span class="label">Contratada:</span> <span class="val">{contratada_full}</span><br>
-        <span class="label">Modalidade:</span> <span class="val">{modalidade}</span><br>
-        <span class="label">Objeto:</span> <span class="val">{r.object_text}</span><br>
-        <span class="label">Data da Assinatura:</span> <span class="val">{r.date}</span><br>
+        <span class="label">Modalidade de Origem:</span> <span class="val">{modalidade}</span><br>
+        <span class="label">Objeto do Aditamento:</span> <span class="val">{r.object_text}</span><br>
+        <span class="label">Data da Assinatura:</span> <span class="val">{r.validity_start}</span><br>
         <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
-        <span class="label">Vigência:</span> <span class="val">{vigencia}</span><br>
+        <span class="label">Vigência/Prorrogação:</span> <span class="val">{vigencia}</span><br>
         <span class="label">Valor:</span> <span class="val">{r.value if r.value != '-' else 'Ver íntegra'}</span>
         </div>"""
     
     def formatar_contrato(self, r: SearchResult) -> str:
         """Formata card de contrato"""
-        num_con = self.extrair_numero_contrato_origem(r.summary)
+        num_con = r.contract_number if r.contract_number != "-" else self.extrair_numero_contrato_origem(r.summary)
         
         contratada_full = "Ver íntegra"
         if r.contractor and r.contractor != "-":
-            doc = self.anonimizar_cpf(r.value if r.value else "")
+            doc = self.anonimizar_cpf(r.company_doc if r.company_doc else "")
             contratada_full = f"{r.contractor}, CNPJ/CPF {doc}"
         
+        modalidade = r.modality if r.modality != "-" else self.extrair_modalidade(r.summary)
+        vigencia = f"{r.validity_start} a {r.validity_end}" if r.validity_end != "-" else "Ver íntegra"
+
         return f"""<div class="card contrato">
+        <div style="background-color: #f0fff4; padding: 5px; border-bottom: 1px solid #10b981; margin-bottom: 10px;">
+            <strong>📜 EXTRATO DE CONTRATO</strong>
+        </div>
         • <span class="label">Processo SEI:</span> <span class="val">{r.process_number}</span><br>
-        Contrato nº <a href="{r.link_pdf}">{num_con}</a> - {contratada_full}<br>
+        <strong>Contrato nº </strong> <a href="{r.link_pdf}">{num_con}</a> - {contratada_full}<br>
+        <span class="label">Modalidade/Origem:</span> <span class="val">{modalidade}</span><br>
         <span class="label">Objeto:</span> <span class="val">{r.object_text}</span><br>
-        <span class="label">Data da Assinatura:</span> <span class="val">{r.date}</span><br>
+        <span class="label">Data da Assinatura:</span> <span class="val">{r.validity_start}</span><br>
         <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
+        <span class="label">Vigência:</span> <span class="val">{vigencia}</span><br>
         <span class="label">Valor:</span> <span class="val">{r.value if r.value != '-' else 'Ver íntegra'}</span>
         </div>"""
     
@@ -214,91 +217,48 @@ class DiarioFormatter:
         <span class="label">Data de Publicação:</span> <span class="val">{r.date}</span>
         </div>"""
     
-    def formatar_html(self, results: List[SearchResult]) -> str:
-        """Formata todos os resultados em HTML"""
-        if not results:
-            return "<p>❌ Nenhum dado coletado.</p>"
-        
-        html = f"{self.css}\n<h2>📋 RESULTADOS - DIÁRIO OFICIAL</h2>\n"
-        
-        for r in results:
-            tipo = self.classificar_tipo(r.summary)
-            
-            if tipo == "ADITAMENTO":
-                html += self.formatar_aditamento(r)
-            elif tipo == "CONTRATO":
-                html += self.formatar_contrato(r)
-            elif tipo == "LICITACAO":
-                html += self.formatar_licitacao(r)
-            else:
-                # Fallback para outros tipos
-                html += f"""<div class="card">
-                <span class="label">Processo:</span> {r.process_number}<br>
-                <span class="label">Documento:</span> <a href="{r.link_html}">{r.document_id}</a><br>
-                <span class="label">Objeto:</span> {r.object_text}<br>
-                <span class="label">Data:</span> {r.date}
-                </div>"""
-        
-        return html
-    
     def formatar_pedido_compra(self, r: SearchResult) -> str:
         """Formata card de pedido de compra (dispensa)"""
-        # Similar to contract but specific style
         contratada_full = "Ver íntegra"
         if r.contractor and r.contractor != "-":
-            doc = self.anonimizar_cpf(r.value if r.value else "") # This looks like a bug in original code (passing value instead of company_doc), let's fix it here? No, let's keep it safe or fix it properly. 
-            # Wait, r.value is money value. r.company_doc is the doc.
-            # The previous code had `doc = self.anonimizar_cpf(r.value if r.value else "")` ... wait, lines 144 and 168 in original: `doc = self.anonimizar_cpf(r.value if r.value else "")`
-            # That looks suspicious. It should probably be r.company_doc.
-            # I will fix it here for the new method, and maybe fixing the others is out of scope unless I'm sure.
-            # Actually, `r.value` usually holds the monetary value "2.178,00". `r.company_doc` holds CNPJ.
-            # The user complained about CPF anonymization not being seen. maybe because it was looking at the wrong field?
-            # I'll check `models.py`. company_doc is the field.
             doc = self.anonimizar_cpf(r.company_doc if r.company_doc else "")
             contratada_full = f"{r.contractor}, CNPJ/CPF {doc}"
 
-        return f"""<div class="card pedido-compra">
+        return f"""<div class="card compra">
         <div style="background-color: #e3f2fd; padding: 5px; border-bottom: 1px solid #ddd; margin-bottom: 10px;">
             <strong>🛒 PEDIDO DE COMPRA / DISPENSA</strong>
         </div>
         • <span class="label">Processo SEI:</span> <span class="val">{r.process_number}</span><br>
         <span class="label">Contratada:</span> <span class="val">{contratada_full}</span><br>
         <span class="label">Objeto:</span> <span class="val">{r.object_text}</span><br>
-        <span class="label">Data da Assinatura:</span> <span class="val">{r.validity_start}</span><br>
         <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
         <span class="label">Valor:</span> <span class="val">{r.value}</span><br>
         </div>"""
 
     def formatar_acordo_cooperacao(self, r: SearchResult) -> str:
-        """Formata card de Acordo de Cooperação"""
-        # Format the contract number to NNN/AAAA
-        formatted_num = r.contract_number if r.contract_number else "S/N"
-        if formatted_num != "S/N" and "/" in formatted_num:
-            parts = formatted_num.split("/")
-            nnn = parts[0].zfill(3)
-            aaaa = parts[1]
-            if len(aaaa) == 2 and int(aaaa) > 10:
-                aaaa = "20" + aaaa
-            formatted_num = f"{nnn}/{aaaa}"
-
-        orgao_completo = r.contractor if r.contractor else "-"
+        """Formata card de Acordo de Cooperação / Parceria"""
+        formatted_num = r.contract_number if r.contract_number != "-" else "S/N"
+        orgao_completo = r.contractor if r.contractor != "-" else "-"
         if r.company_doc and r.company_doc != "-":
             orgao_completo += f", CNPJ nº {r.company_doc}"
 
-        vig_inicio = r.validity_start if r.validity_start else "-"
-        vig_fim = r.validity_end if r.validity_end else "-"
+        vig_inicio = r.validity_start if r.validity_start != "-" else "-"
+        vig_fim = r.validity_end if r.validity_end != "-" else "-"
+        
+        # Se for especificamente um Acordo de Cooperação, usamos o rótulo adequado
+        label_principal = "🤝 ACORDO DE COOPERAÇÃO" if "ACORDO" in formatted_num.upper() or r.doc_type == "ACORDO_COOPERACAO" else "🤝 PARCERIA / CONVÊNIO"
 
         return f"""<div class="card parceria">
-        <div style="background-color: #e8f5e9; padding: 5px; border-bottom: 1px solid #ddd; margin-bottom: 10px;">
-            <strong>🤝 ACORDO DE COOPERAÇÃO</strong>
+        <div style="background-color: #e8f5e9; padding: 5px; border-bottom: 1px solid #22c55e; margin-bottom: 10px;">
+            <strong>{label_principal}</strong>
         </div>
-        <p><strong>Número do processo: </strong> <a href="{r.link_html}" target="_blank">{r.process_number}</a></p>
-        <p><strong>Número do termo: </strong> ACORDO DE COOPERAÇÃO <a href="{r.link_pdf}" target="_blank">{formatted_num}</a></p>
-        <p><strong>Nome do órgão/instituição: </strong> {orgao_completo}</p>
-        <p><strong>Objeto: </strong> {r.object_text}</p>
-        <p><strong>Data da Assinatura: </strong> {r.validity_start if r.validity_start else '-'}</p>
-        <p><strong>Data da Publicação: </strong> {r.date}</p>
-        <p><strong>Vigência: </strong> de {vig_inicio} a {vig_fim}</p>
+        <span class="label">Número do processo:</span> <a href="{r.link_html}" target="_blank">{r.process_number}</a><br>
+        <span class="label">Número do termo:</span> <a href="{r.link_pdf}" target="_blank">{formatted_num}</a><br>
+        <span class="label">Nome do órgão/instituição:</span> <span class="val">{orgao_completo}</span><br>
+        <span class="label">Objeto:</span> <span class="val">{r.object_text}</span><br>
+        <span class="label">Data da Assinatura:</span> <span class="val">{r.validity_start}</span><br>
+        <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
+        <span class="label">Vigência:</span> <span class="val">de {vig_inicio} a {vig_fim}</span>
         </div>"""
 
     def formatar_destaque(self, r: SearchResult) -> str:
@@ -317,7 +277,7 @@ class DiarioFormatter:
         <span class="label">Objeto:</span> <span class="val">{r.object_text}</span><br>
         <span class="label">Data de Publicação:</span> <span class="val">{r.date}</span><br>
         <div style="margin-top: 10px; text-align: right;">
-             <a href="{r.link_pdf}" class="btn" style="background-color: #28a745; color: white; padding: 5px 10px; border-radius: 4px;">Abrir Documento 📄</a>
+             <a href="{r.link_pdf}" class="btn" style="background-color: #2563eb; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none;">Abrir 📄</a>
         </div>
         </div>"""
 
@@ -326,61 +286,41 @@ class DiarioFormatter:
         if not results:
             return "<p>❌ Nenhum dado coletado.</p>"
         
-        # Update CSS for new types
-        extra_css = """
-        .pedido-compra { border-left: 5px solid #2196F3; background-color: #fbfdff; }
-        .destaque { border: 2px solid #ffc107; box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
-        """
-        
-        html = f"{self.css}{extra_css}</style>\n<h2>📋 RESULTADOS - DIÁRIO OFICIAL</h2>\n"
+        html = f"{self.css}\n<h2>📋 RESULTADOS - DIÁRIO OFICIAL</h2>\n"
         
         for r in results:
-            # Check explicit doc_type first (populated by scraper_service)
             if r.doc_type == "PEDIDO_COMPRA":
                 html += self.formatar_pedido_compra(r)
                 continue
             elif r.doc_type == "HOMOLOGACAO":
                 html += self.formatar_destaque(r)
                 continue
-            elif r.doc_type == "ACORDO_COOPERACAO":
+            elif r.doc_type == "ACORDO_COOPERACAO" or r.doc_type == "PARCERIA":
                 html += self.formatar_acordo_cooperacao(r)
                 continue
-            elif r.doc_type == "DIVERSOS":
-                 continue # User implies "Outros" might be excluded or just put in "Outros" group?
-                 # "outros termos que precisam entrar na regra de Outros" -> Assuming "Outros" means "Excluded" or just "Generic/Ignored"?
-                 # User said: "os documentos que se referirem a 'Pedido de Compra'... sejam colocados em outro agrupamento"
-                 # And "Outros termos que precisam entrar na regra de Outros... NOTIFICAÇÃO..."
-                 # Usually "Outros/Diversos" implies we might not want to show them prominently or at all if they are noise.
-                 # Current code: `return "OUTROS"` in classify -> put in generic card.
-                 # Scraper sets `doc_type` = 'DIVERSOS'. 
-                 # Let's render them as generic cards for now so they aren't lost, unless user said "Exclude".
-                 # "exclude specific document types ... that are not relevant for publication" (from previous summary). 
-                 # So DIVERSOS should probably be SKIPPED or put in a separate list at bottom. 
-                 # Let's skip them for now if they are truly irrelevant, or render minimally.
-                 # User said: "classificar esses documentos como 'DIVERSOS' e garantindo que essa classificação seja passada para o frontend para exibição adequada."
-                 # So maybe just show them.
-                 pass
-            
-            # Fallback to text classification if doc_type is generic
-            tipo = self.classificar_tipo(r.summary)
-            if r.doc_type == 'DIVERSOS': tipo = "OUTROS_IRRELEVANTES" # catch-all
+            elif r.doc_type == "DOACAO":
+                 html += f"""<div class="card doacao">
+                 <span class="label">DOAÇÃO / COMODATO:</span> <span class="val">{r.process_number}</span><br>
+                 <span class="label">Objeto:</span> {r.object_text}<br>
+                 <span class="label">Data:</span> {r.date}
+                 </div>"""
+                 continue
+
+            tipo = self.classificar_tipo(r.summary, r.doc_type)
 
             if tipo == "ADITAMENTO":
                 html += self.formatar_aditamento(r)
-            elif tipo == "CONTRATO":
+            elif tipo == "CONTRATO" or r.doc_type == "EMPENHO":
                 html += self.formatar_contrato(r)
-            elif tipo == "LICITACAO":
+            elif tipo == "LICITACAO" or r.doc_type == "PREGAO" or tipo == "PREGAO":
                 html += self.formatar_licitacao(r)
-            elif tipo == "OUTROS_IRRELEVANTES":
-                 # Maybe exclude? Or render small.
+            elif tipo == "DIVERSOS":
                  html += f"""<div class="card" style="opacity: 0.6; border-left: 5px solid #ccc;">
-                 <span class="label">Outros/Diversos:</span> <span class="val">{r.summary[:100]}...</span>
+                 <span class="label">Diversos:</span> <span class="val">{r.summary[:150]}...</span>
                  </div>"""
             else:
-                # Fallback
                 html += f"""<div class="card">
                 <span class="label">Processo:</span> {r.process_number}<br>
-                <span class="label">Documento:</span> <a href="{r.link_html}">{r.document_id}</a><br>
                 <span class="label">Objeto:</span> {r.object_text}<br>
                 <span class="label">Data:</span> {r.date}
                 </div>"""
@@ -390,19 +330,7 @@ class DiarioFormatter:
     def salvar_html(self, results: List[SearchResult], filename: str = "resultados.html"):
         """Salva resultados em arquivo HTML"""
         html = self.formatar_html(results)
-        html_completo = f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resultados - Diário Oficial</title>
-</head>
-<body>
-    {html}
-</body>
-</html>"""
-        
+        html_completo = f"<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'><title>Resultados</title></head><body>{html}</body></html>"
         with open(filename, 'w', encoding='utf-8') as f:
             f.write(html_completo)
-        
         return filename

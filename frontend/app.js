@@ -112,29 +112,22 @@ function determineType(item) {
     if (item.doc_type && item.doc_type !== 'OUTRO') {
         tipo = item.doc_type;
     } else {
-        // Fallback inference
-        const isApostilamento = fullTerm.includes('APOSTILAMENTO');
-        const isAditamento = item.amendment_number || fullTerm.includes('ADITAMENTO');
-        const isAcordoCoop = fullTerm.includes('ACORDO DE COOPERAÇÃO') || fullTerm.includes('ACORDO DE COOPERACAO');
-        const isParceria = fullTerm.includes('FOMENTO') || fullTerm.includes('COLABORAÇÃO') || fullTerm.includes('COOPERAÇÃO') || fullTerm.includes('TERMO DE COLABORAÇÃO');
-        const isDoacao = fullTerm.includes('DOAÇÃO') || fullTerm.includes('COMODATO');
-        const isEmpenho = fullTerm.includes('EMPENHO');
-        const isDiversos = fullTerm.includes('ESCLARECIMENTO') || fullTerm.includes('QUESTIONAMENTO') || fullTerm.includes('IMPUGNAÇ') || fullTerm.includes('IMPUGNAC') || fullTerm.includes('DEMONSTRATIVO DAS COMPRAS');
-
-        const isContractStrong = fullTerm.includes('TERMO DE CONTRATO') || fullTerm.includes('EXTRATO DE CONTRATO');
-        const isPregao = fullTerm.includes('PREGÃO') || fullTerm.includes('LICITAÇÃO') || fullTerm.includes('PREGAO') || fullTerm.includes('CONVITE') || fullTerm.includes('CONCORRÊNCIA');
-        const isContractWeak = fullTerm.includes('CONTRATO');
-
-        if (isApostilamento) tipo = 'APOSTILAMENTO';
-        else if (isAditamento) tipo = 'ADITAMENTO';
-        else if (isAcordoCoop) tipo = 'ACORDO_COOPERACAO';
-        else if (isParceria) tipo = 'PARCERIA';
-        else if (isDoacao) tipo = 'DOACAO';
-        else if (isEmpenho) tipo = 'EMPENHO';
-        else if (isDiversos) tipo = 'DIVERSOS';
-        else if (isContractStrong) tipo = 'CONTRATO';
-        else if (isPregao) tipo = 'PREGAO';
-        else if (isContractWeak) tipo = 'CONTRATO';
+        // Fallback inference using hierarchy (Synchronized with Backend)
+        if (fullTerm.includes('ADITAMENTO') || fullTerm.includes('TERMO ADITIVO') || fullTerm.includes('APOSTILAMENTO')) {
+            tipo = 'ADITAMENTO';
+        } else if (fullTerm.includes('CONTRATO Nº') || fullTerm.includes('CONTRATO N.º') || fullTerm.includes('FORMALIZAÇÃO DO CONTRATO') || fullTerm.includes('EXTRATO DE CONTRATO')) {
+            tipo = 'CONTRATO';
+        } else if (fullTerm.includes('ACORDO DE COOPERAÇÃO') || fullTerm.includes('ACORDO DE COOPERACAO')) {
+            tipo = 'ACORDO_COOPERACAO';
+        } else if (fullTerm.includes('PARCERIA') || fullTerm.includes('CONVÊNIO') || fullTerm.includes('TERMO DE FOMENTO')) {
+            tipo = 'PARCERIA';
+        } else if (fullTerm.includes('ESCLARECIMENTO') || fullTerm.includes('QUESTIONAMENTO') || fullTerm.includes('IMPUGNAÇ') || fullTerm.includes('NOTIFICAÇÃO') || fullTerm.includes('DESPACHO')) {
+            tipo = 'DIVERSOS';
+        } else if (fullTerm.includes('DISPENSA')) {
+            tipo = 'PEDIDO_COMPRA';
+        } else if (fullTerm.includes('PREGÃO') || fullTerm.includes('PREGAO') || fullTerm.includes('ABERTURA DE LICITAÇÃO') || fullTerm.includes('AVISO DE LICITAÇÃO') || fullTerm.includes('ATA DE REGISTRO DE PREÇOS') || fullTerm.includes('SISTEMA DE REGISTRO DE PREÇOS')) {
+            tipo = 'PREGAO';
+        }
     }
 
     // Map type to visual class
@@ -404,36 +397,25 @@ function renderTextView(results) {
              </p>`;
 
             html += P("Contratada:", `${item.contractor || '-'} ${item.company_doc && item.company_doc !== '-' ? ', ' + item.company_doc : ''}`);
-            if (modality && modality !== '-') html += P("Modalidade:", modality);
+            html += P("Modalidade de Origem:", modality && modality !== '-' ? modality : "Ver contrato original");
 
-            html += P("Objeto:", objText);
+            html += P("Objeto do Aditamento:", objText);
             html += P("Data da Assinatura:", item.validity_start || '-');
             html += P("Data da Publicação:", item.date);
 
-            if (item.validity_end && item.validity_end !== '-') {
-                html += P("Vigência:", `${item.validity_start} e ${item.validity_end}`);
-            }
-            html += P("Valor:", item.value || 'Sem efeito financeiros');
+            const vigencia = (item.validity_start && item.validity_end && item.validity_end !== '-') ? `${item.validity_start} a ${item.validity_end}` : 'Ver íntegra';
+            html += P("Vigência/Prorrogação:", vigencia);
+            html += P("Valor:", item.value || 'Sem efeitos financeiros');
         }
 
         // --- LAYOUT ACORDO DE COOPERAÇÃO ---
         else if (tipo === 'ACORDO_COOPERACAO') {
             html += `<p><strong>Número do processo: </strong> <a href="${item.link_html}" target="_blank" style="color:blue;text-decoration:none">${item.process_number || '-'}</a></p>`;
 
-            const numAcordo = item.contract_number ? item.contract_number.replace(/^0*/, '').padStart(3, '0') + '/' + new Date().getFullYear().toString() : "S/N"; // formatting NNN/AAAA loosely or using what comes. Actually, let's format it properly:
+            const numTermo = item.contract_number && item.contract_number !== '-' ? item.contract_number : "S/N";
             
-            // Format to NNN/AAAA if possible
-            let formattedNum = item.contract_number || "S/N";
-            if (formattedNum !== "S/N" && formattedNum.includes('/')) {
-                let parts = formattedNum.split('/');
-                let nnn = parts[0].padStart(3, '0');
-                let aaaa = parts[1];
-                if (aaaa.length === 2 && parseInt(aaaa) > 10) aaaa = "20" + aaaa;
-                formattedNum = `${nnn}/${aaaa}`;
-            }
-
             html += `<p>
-                 <strong>Número do termo: </strong> ACORDO DE COOPERAÇÃO <a href="${item.link_pdf}" target="_blank" style="color:blue;text-decoration:none">${formattedNum}</a>
+                 <strong>Número do termo: </strong> <a href="${item.link_pdf}" target="_blank" style="color:blue;text-decoration:none">${numTermo}</a>
              </p>`;
 
             const orgaoCompleto = `${item.contractor || '-'} ${item.company_doc && item.company_doc !== '-' ? ', CNPJ nº ' + item.company_doc : ''}`;
@@ -485,18 +467,16 @@ function renderTextView(results) {
                 <strong>${labelInst} nº </strong> <a href="${item.link_pdf}" target="_blank" style="color:blue;text-decoration:none">${numCont}</a> - ${item.contractor} ${item.company_doc && item.company_doc !== '-' ? ', ' + item.company_doc : ''}
             </p>`;
 
-            if (modality && modality !== '-') {
-                html += P("Modalidade:", modality);
-            }
+            html += P("Modalidade/Origem:", modality && modality !== '-' ? modality : "Não informada");
 
             html += P("Objeto:", objText);
             html += P("Data da Assinatura:", item.validity_start || '-');
-            if (tipo === 'CONTRATO') {
-                html += P("Início da Vigência do Contrato:", item.validity_start || '-');
-                html += P("Término da Vigência do Contrato:", item.validity_end || '-');
-            }
             html += P("Data da Publicação:", item.date);
-            html += P("Valor:", item.value || 'Sem efeito financeiros');
+            
+            const vigencia = (item.validity_start && item.validity_end && item.validity_end !== '-') ? `${item.validity_start} a ${item.validity_end}` : 'Ver íntegra';
+            html += P("Vigência:", vigencia);
+            
+            html += P("Valor:", item.value || 'Sem efeitos financeiros');
         }
 
         // --- LAYOUT PREGÃO / LICITAÇÃO / OUTROS ---

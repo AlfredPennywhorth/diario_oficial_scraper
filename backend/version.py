@@ -71,7 +71,16 @@ async def check_for_updates() -> Optional[UpdateInfo]:
                 timeout=aiohttp.ClientTimeout(total=UPDATE_CHECK_TIMEOUT)
             ) as response:
                 if response.status == 200:
-                    data = await response.json()
+                    # Defensive JSON reading (GitHub raw can return text/plain)
+                    try:
+                        data = await response.json(content_type=None)
+                    except Exception as e:
+                        logger.warning(f"Falha ao processar JSON de atualização: {e}")
+                        # Fallback: tentar ler como texto e converter manualmente
+                        text = await response.text()
+                        import json
+                        data = json.loads(text)
+                        
                     update_info = UpdateInfo(data)
                     
                     if update_info.available:

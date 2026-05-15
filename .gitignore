@@ -46,6 +46,7 @@ coverage.xml
 # Scraper artifacts
 *.html
 *.zip
+partial_results.json
 backend/logs/
 server_error.log
 

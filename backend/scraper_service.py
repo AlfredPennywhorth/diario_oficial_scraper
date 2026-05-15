@@ -16,11 +16,24 @@ logger = logging.getLogger(__name__)
 class DiarioScraper:
     def __init__(self, debug=False):
         self.debug = debug  # If True, browser will be visible
-        self.base_url = "https://diariooficial.prefeitura.sp.gov.br/md_epubli_controlador.php?acao=materias_pesquisar"
-        self.orgao_id = "68"  # CET
+        
+        # Centralized Configurations (Load from Environment or Defaults)
+        self.base_url = os.getenv("SCRAPER_BASE_URL", "https://diariooficial.prefeitura.sp.gov.br/md_epubli_controlador.php?acao=materias_pesquisar")
+        self.orgao_id = os.getenv("SCRAPER_ORGAO_ID", "68")  # Default 68 (CET)
+        
+        # Browser Configurations
+        self.browser_timeout = int(os.getenv("BROWSER_TIMEOUT_MS", "90000"))
+        self.browser_executable = os.getenv("BROWSER_EXECUTABLE_PATH", None)
+        # BROWSER_HEADLESS env overwrites self.debug if present
+        env_headless = os.getenv("BROWSER_HEADLESS", None)
+        if env_headless is not None:
+            self.headless = env_headless.lower() in ("true", "1", "yes")
+        else:
+            self.headless = not self.debug
+
         self.is_running = False # Controle de execução simultânea
         
-        # Determine base directory for logs
+        # Determine base directory for logs and artifacts
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)
         else:
@@ -154,18 +167,31 @@ class DiarioScraper:
             data['doc_fiscal'] = doc
 
     def _extract_contract_info(self, text, data):
+        # 1. Busca específica por CONTRATO com prioridade (pode sobrescrever labels genéricos)
+        m_con = re.search(r'(?:Formalização d[oa] |Extrato de |Termo de |Celebrado o )?Contrato\s*(?:n[º°.º]|n[°º])?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+        if m_con:
+             data['num_contrato'] = m_con.group(1)
+        
+        # 2. Busca genérica se ainda estiver com valor padrão ou "-"
         if data.get('num_contrato') in ["-", "", None]:
-            m_id = re.search(r'(?:Pregão(?: Eletrônico)?|Contrato|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Coopera[çc][ãa]o|Termo de Doação|Termo de Comodato)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+            m_id = re.search(r'(?:Pregão(?: Eletrônico)?|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Coopera[çc][ãa]o|Termo de Doação|Termo de Comodato)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
             if m_id: 
                 data['num_contrato'] = m_id.group(1)
 
-        m_adit = re.search(r'(?:Termo de )?(Aditamento|Apostilamento)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+        # 3. Busca específica por ACORDO DE COOPERAÇÃO (para garantir o prefixo)
+        m_acordo = re.search(r'(ACORDO DE COOPERAÇÃO)\s*(?:n[º°.º]|n[°º])?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+        if m_acordo:
+             data['num_contrato'] = f"{m_acordo.group(1).upper()} {m_acordo.group(2)}"
+
+        # 4. Busca por Aditamentos / Apostilamentos
+        m_adit = re.search(r'(?:Termo de |Extrato de |Termo )?(Aditamento|Apostilamento|Aditivo)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
         if m_adit:
-            data['tipo_doc'] = m_adit.group(1).upper()
+            tipo_encontrado = m_adit.group(1).upper()
+            data['tipo_doc'] = 'ADITAMENTO' if tipo_encontrado in ['ADITAMENTO', 'ADITIVO'] else 'APOSTILAMENTO'
             data['num_aditamento'] = m_adit.group(2)
             
-            # Parent Contract identification
-            m_pai = re.search(r'ao (?:Termo de )?(?:Contrato|Termo de Colaboração|Termo de Fomento|Ajuste)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+            # Identificação do Contrato Pai (Original)
+            m_pai = re.search(r'(?:ao |do )(?:Termo de )?(?:Contrato|Termo de Colaboração|Termo de Fomento|Ajuste)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
             if m_pai:
                 data['contrato_pai'] = m_pai.group(1)
 
@@ -240,24 +266,70 @@ class DiarioScraper:
         data['validade_fim'] = validade_fim
 
     def _classify_document(self, text, data):
-        if data.get('tipo_doc') in ['ADITAMENTO', 'APOSTILAMENTO']:
+        """Classifica o documento conforme hierarquia e termos fortes"""
+        txt = text.upper()
+        modality = data.get('modality', '').upper()
+
+        # 1. ADITAMENTO / APOSTILAMENTO
+        if any(x in txt for x in ["TERMO ADITIVO", "ADITAMENTO", "EXTRATO DE TERMO DE ADITAMENTO", "APOSTILAMENTO"]) or data.get('num_aditamento'):
+             data['tipo_doc'] = 'ADITAMENTO'
+             return
+             
+        # 2. CONTRATO
+        if any(x in txt for x in ["CONTRATO Nº", "CONTRATO N.º", "CONTRATO N°", "FORMALIZAÇÃO DO CONTRATO", "EXTRATO DE CONTRATO", "CELEBRAÇÃO DE CONTRATO"]):
+             data['tipo_doc'] = 'CONTRATO'
+             return
+
+        # 3. ACORDO DE COOPERAÇÃO / PARCERIA / CONVÊNIO
+        if any(x in txt for x in ["ACORDO DE COOPERAÇÃO", "ACORDO DE COOPERACAO"]):
+             data['tipo_doc'] = 'ACORDO_COOPERACAO'
+             return
+
+        if any(x in txt for x in ["TERMO DE PARCERIA", "CONVÊNIO", "CONVENIO", "TERMO DE FOMENTO", "TERMO DE COLABORAÇÃO", "TERMO DE COLABORACAO"]):
+             data['tipo_doc'] = 'PARCERIA'
+             return
+
+        # 4. DISPENSA / COMPRA (Se houver evidência forte)
+        if "DISPENSA" in txt or ("DISPENSA" in modality and "OBJETO" in txt):
+             data['tipo_doc'] = 'PEDIDO_COMPRA'
+             return
+
+        # 5. PREGÃO (Exige evidência explícita de pregão/licitação)
+        termos_fortes_pregao = [
+            "PREGÃO", "PREGAO", 
+            "AVISO DE LICITAÇÃO", "ABERTURA DE LICITAÇÃO", 
+            "HOMOLOGAÇÃO DE PREGÃO", "HOMOLOGAÇÃO DE LICITAÇÃO", 
+            "ATA DE REGISTRO DE PREÇOS", "SISTEMA DE REGISTRO DE PREÇOS"
+        ]
+        
+        # Termos que indicam publicação genérica/administrativa (DIVERSOS)
+        # Devem ter prioridade sobre o fallback de modalidade
+        termos_diversos = [
+            "ESCLARECIMENTO", "QUESTIONAMENTO", "DESPACHO DE IMPUGNAÇ", 
+            "IMPUGNAÇ", "NOTIFICAÇÃO", "ATA DE ABERTURA", 
+            "DEMONSTRATIVO DAS COMPRAS", "RESPOSTA A QUESTIONAMENTO",
+            "PAGAMENTO", "DESPACHO", "PUBLICAÇÃO"
+        ]
+
+        if any(x in txt for x in termos_diversos):
+            data['tipo_doc'] = 'DIVERSOS'
             return
 
-        if data.get('modality') == 'DISPENSA' or "DISPENSA" in data.get('modality', '').upper():
-             data['tipo_doc'] = 'PEDIDO_COMPRA'
-        elif re.search(r'(?:Formalização|Termo|Extrato) d[oa] Contrato', text, re.IGNORECASE) or \
-             re.search(r'Contrato\s*(?:nº|n°)\s*[\d]+', text, re.IGNORECASE):
-             data['tipo_doc'] = 'CONTRATO'
-        elif re.search(r'(?:DESPACHO DE ADJUDICAÇÃO|ADJUDICO|DESPACHO DE HOMOLOGAÇÃO|HOMOLOGO|AUTORIZO a contratação)', text, re.IGNORECASE):
-             data['tipo_doc'] = 'HOMOLOGACAO'
-        elif re.search(r'Termo de (Fomento|Colaboração|Doação|Comodato)', text, re.IGNORECASE):
-             data['tipo_doc'] = 'PARCERIA' # Simplified grouping
-        elif re.search(r'Acordo de Coopera[çc][ãa]o', text, re.IGNORECASE):
-             data['tipo_doc'] = 'ACORDO_COOPERACAO'
-        elif re.search(r'(ESCLARECIMENTO|QUESTIONAMENTO|DESPACHO DE IMPUGNAÇ|IMPUGNAÇ[ÃA]O|NOTIFICAÇÃO|ATA DE ABERTURA)', text, re.IGNORECASE):
-             data['tipo_doc'] = 'DIVERSOS'
-        else:
-             data['tipo_doc'] = 'OUTRO'
+        # Se contiver algum termo forte no TEXTO, é PREGAO
+        if any(x in txt for x in termos_fortes_pregao):
+             data['tipo_doc'] = 'PREGAO'
+             return
+        
+        # Fallback para modalidade apenas se houver evidência de ser a publicação principal
+        # e NÃO for apenas um termo genérico
+        if any(x in modality for x in ["PREGÃO", "PREGAO", "LICITAÇÃO", "LICITACAO"]):
+             # Exige 'OBJETO' + algum dado relevante (VALOR ou CONTRATADA) para não ser DIVERSOS
+             if "OBJETO" in txt and (any(v in txt for v in ["VALOR", "R$", "CONTRATAD", "VENCEDOR", "ADJUDIC"])):
+                 data['tipo_doc'] = 'PREGAO'
+                 return
+        
+        # 6. DIVERSOS (Fallback final para qualquer coisa que não se encaixe acima)
+        data['tipo_doc'] = 'DIVERSOS'
 
     def _apply_shielding(self, data):
         """Blindagem: Alertas sobre campos críticos ausentes"""
@@ -374,27 +446,54 @@ class DiarioScraper:
             delta = d2 - d1
             date_list = [(d1 + timedelta(days=i)).strftime("%d/%m/%Y") for i in range(delta.days + 1)]
 
-            logger.info(f"Iniciando navegador (debug={self.debug})...")
-            
             async with async_playwright() as p:
                 browser = None
-                launch_options = {"headless": not self.debug, "timeout": 30000}
+                launch_options = {
+                    "headless": self.headless, 
+                    "timeout": self.browser_timeout
+                }
+                if self.browser_executable:
+                    launch_options["executable_path"] = self.browser_executable
+                    logger.info(f"Usando executável customizado: {self.browser_executable}")
                 
-                try:
-                    browser = await p.chromium.launch(**launch_options)
-                except:
+                # Fallback Sequence with detailed logging
+                browsers_to_try = [
+                    {"name": "Chromium (Playwright)", "args": {}},
+                    {"name": "Google Chrome", "args": {"channel": "chrome"}},
+                    {"name": "Microsoft Edge", "args": {"channel": "msedge"}}
+                ]
+
+                last_error = ""
+                for b_config in browsers_to_try:
                     try:
-                        browser = await p.chromium.launch(channel="chrome", **launch_options)
-                    except:
-                        browser = await p.chromium.launch(channel="msedge", **launch_options)
+                        logger.info(f"Tentando iniciar {b_config['name']} (timeout={self.browser_timeout}ms)...")
+                        browser = await p.chromium.launch(**{**launch_options, **b_config['args']})
+                        logger.info(f"[OK] {b_config['name']} iniciado com sucesso.")
+                        break
+                    except Exception as e:
+                        err_msg = str(e)
+                        last_error = err_msg
+                        # Differentiate error types
+                        if "Executable doesn't exist" in err_msg:
+                            diag = "Executável não encontrado."
+                        elif "Timeout" in err_msg:
+                            diag = "Timeout de inicialização (pode ser bloqueio de rede/antivírus ou caminho UNC)."
+                        else:
+                            diag = f"Erro inesperado: {err_msg[:100]}"
+                        
+                        logger.warning(f"[FALHA] {b_config['name']} falhou: {diag}")
                 
-                if not browser: raise Exception("Falha crítica ao iniciar navegador.")
+                if not browser:
+                    error_detail = f"Não foi possível iniciar nenhum navegador. Último erro: {last_error}"
+                    logger.error(error_detail)
+                    raise Exception(error_detail)
 
                 context = await browser.new_context(user_agent="Mozilla/5.0 DiárioOficialScraper/1.0")
-                context.set_default_navigation_timeout(30000) 
+                context.set_default_navigation_timeout(self.browser_timeout) 
                 page = await context.new_page()
                 
-                await page.goto(self.base_url, timeout=30000)
+                logger.info(f"Acessando URL base: {self.base_url}")
+                await page.goto(self.base_url, timeout=self.browser_timeout)
 
                 total_days = len(date_list)
                 for day_idx, current_date in enumerate(date_list):
