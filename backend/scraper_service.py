@@ -90,7 +90,10 @@ class DiarioScraper:
              if div_main:
                  data['sintese'] = div_main.get_text(" ", strip=True)
 
-        full_text = data.get('sintese', "")
+        div_main = soup.find('div', {'class': 'conteudoMateria'}) or soup.find('div', {'class': 'materia'})
+        full_body_text = div_main.get_text(" ", strip=True) if div_main else soup.get_text(" ", strip=True)
+        
+        full_text = f"{data.get('num_contrato', '')} {data.get('sintese', '')} {data.get('explicit_object', '')} {full_body_text}"
         
         # 2. Extração via Regex (Smart Extraction)
         self._extract_modality(full_text, data)
@@ -114,6 +117,7 @@ class DiarioScraper:
             "CPF /CNPJ/ RNE": "doc_fiscal", "CNPJ": "doc_fiscal",
             "Síntese (Texto do Despacho)": "sintese", "Texto do despacho": "sintese",
             "Número do Contrato": "num_contrato", "Número": "num_contrato",
+            "Número da Publicação": "num_contrato",
             "Íntegra do Contrato (Número do Documento SEI)": "integra_id",
             "Arquivo (Número do documento SEI)": "integra_id", 
             "Data da Assinatura": "data_assinatura",
@@ -147,16 +151,23 @@ class DiarioScraper:
                 data['modality'] = "LICITAÇÃO"
 
     def _extract_contractor(self, text, data):
+        # Extrair CNPJ se ainda não tiver
+        if not data.get('doc_fiscal') or data.get('doc_fiscal') == "-":
+            m_cnpj = re.search(r'([0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})', text)
+            if m_cnpj:
+                data['doc_fiscal'] = m_cnpj.group(1)
+
         if data.get('contractor') in ["-", "", None]:
              patterns = [
-                 r'(?:Vencedor(?:es)?|Adjudicado para|Empresa|Contratada)\s*[:\.-]?\s*([A-Z\s\.,&LTDA\-]+?)(?:,?\s*CNPJ|CPF|$)',
-                 r'Empresa\s+([A-Z\s\.,&LTDA\-]+?)\s+,',
+                 r'(?:Vencedor(?:es)?|Adjudicado para|Empresa|Contratada|Partícipe)\s*[:\.-]?\s*([A-ZÇÃÕÁÉÍÓÚ\s\.,&LTDA\-]+?)(?:,?\s*CNPJ|CPF|$)',
+                 r'Empresa\s+([A-ZÇÃÕÁÉÍÓÚ\s\.,&LTDA\-]+?)\s+,',
+                 r'([^.\n:;]{5,120}?)(?:,?\s*CNPJ|CPF)'
              ]
              for p in patterns:
                  m_winner = re.search(p, text, re.IGNORECASE)
                  if m_winner:
                       candidate = m_winner.group(1).strip().rstrip(',.-')
-                      if len(candidate) > 3 and "PROCESS" not in candidate.upper():
+                      if len(candidate) > 3 and "PROCESS" not in candidate.upper() and "PUBLICACAO" not in candidate.upper():
                            data['contractor'] = candidate
                            break
         
@@ -179,9 +190,12 @@ class DiarioScraper:
                 data['num_contrato'] = m_id.group(1)
 
         # 3. Busca específica por ACORDO DE COOPERAÇÃO (para garantir o prefixo)
-        m_acordo = re.search(r'(ACORDO DE COOPERAÇÃO)\s*(?:n[º°.º]|n[°º])?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+        m_acordo = re.search(r'(ACORDO DE COOPERA[ÇC][ÃA]O)\s*(?:n[º°.º]|n[°º])?\s*([\d\.]+)/([\d]{2,4})', text, re.IGNORECASE)
         if m_acordo:
-             data['num_contrato'] = f"{m_acordo.group(1).upper()} {m_acordo.group(2)}"
+             ano = m_acordo.group(3)
+             if len(ano) == 4:
+                 ano = ano[2:]
+             data['num_contrato'] = f"Acordo de Cooperação {m_acordo.group(2)}/{ano}"
 
         # 4. Busca por Aditamentos / Apostilamentos
         m_adit = re.search(r'(?:Termo de |Extrato de |Termo )?(Aditamento|Apostilamento|Aditivo)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
@@ -222,17 +236,25 @@ class DiarioScraper:
             if m_dt: validade_inicio = normalize_date(m_dt.group(1))
             
         patterns_vigencia = [
-            r'Vigência:?\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?\s*e\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?',
-            r'compreendidos entre\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?\s*e\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?',
-            r'(?:vigência|período|prazo).*?de\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?\s*a\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?',
+            r'Vigência:?\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?\s*(?:e|a)\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?',
+            r'compreendidos entre\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?\s*(?:e|a)\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?',
+            r'(?:vigência|período|prazo).*?(?:de\s*)?"?(\d{2}[/.]\d{2}[/.]\d{4})"?\s*(?:e|a)\s*"?(\d{2}[/.]\d{2}[/.]\d{4})"?',
         ]
         
         found_vig = False
         for p in patterns_vigencia:
             m = re.search(p, text, re.IGNORECASE)
             if m:
-                validade_inicio = normalize_date(m.group(1))
-                validade_fim = normalize_date(m.group(2))
+                vig_start = normalize_date(m.group(1))
+                vig_end = normalize_date(m.group(2))
+                
+                # Se não tínhamos data de assinatura, usamos o início da vigência
+                if not validade_inicio:
+                    validade_inicio = vig_start
+                    
+                # Sempre salvamos o fim da vigência
+                validade_fim = vig_end
+                
                 found_vig = True
                 break
         
@@ -396,10 +418,10 @@ class DiarioScraper:
                  return sub.strip('.,; ')
 
         # 1. Clean explicit OBJETO
-        match_obj = re.search(r'(?:OBJETO da licitação|OBJETO|ASSUNTO):?\s*(.*?)(?=\s*(?:JULGAMENTO|REGIME|MODALIDADE|MODO|Valor|Prazo|Local|Data|Edital|Sessão|II\s?-|II\.|\.|$))', txt, re.IGNORECASE)
+        match_obj = re.search(r'(?:OBJETO da licitação|OBJETO|ASSUNTO):?\s*(.*?)(?=\s*(?:JULGAMENTO|REGIME|MODALIDADE|MODO|Valor|Prazo|Local|Data|Edital|Sessão|Licitante|II\s?-|II\.|\.|$))', txt, re.IGNORECASE)
         if match_obj:
             val = match_obj.group(1).strip()
-            if len(val) < 300: return val.rstrip('.')
+            if len(val) < 300: return self._clean_object_text(val.rstrip('.'))
 
         # 2. Look for action verbs at start
         termos_parada = r'(?:II\s?-|II\.|2\.|A CET poderá|Nesta hipótese|EXPEDIENTE Nº|Data d[ae]|Edital|Sessão|Realização|com fundamento|nos termos|por inexigibilidade|em conformidade|Formalizado em|Disponível no|Publicado no|$)'
@@ -414,13 +436,17 @@ class DiarioScraper:
              return match_quote.group(1).strip()
 
         # 4. Text WITHOUT quotes
-        match_no_quote = re.search(r'(?:que trata\s*(?:d[eao])?|objeto:?)\s*(?!["“\'])(.*?)(?=\.|,|;|-|Modalidade|Valor|Data|$)', txt, re.IGNORECASE)
+        match_no_quote = re.search(r'(?:que trata\s*(?:d[eao])?|objeto:?)\s*(?!["“\'])(.*?)(?=\.|,|;|-|Modalidade|Valor|Data|Licitante|$)', txt, re.IGNORECASE)
         if match_no_quote:
              val = match_no_quote.group(1).strip()
              if len(val) > 3:
-                return val
+                return self._clean_object_text(val)
 
         return "Verificar objeto na íntegra."
+
+    def _clean_object_text(self, text):
+        cleaned = re.sub(r'^(?:CELEBRAÇÃO\s+DE\s+)?ACORDO\s+DE\s+COOPERA[ÇC][ÃA]O\s+(?:PARA\s+A\s+|PARA\s+)?', '', text, flags=re.IGNORECASE)
+        return cleaned.strip()
 
     async def scrape(self, start_date: str | datetime, end_date: str | datetime, terms: list, status_callback=None, use_ai=True):
         if self.is_running:

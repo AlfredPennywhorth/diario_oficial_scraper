@@ -419,14 +419,14 @@ function renderTextView(results) {
              </p>`;
 
             const orgaoCompleto = `${item.contractor || '-'} ${item.company_doc && item.company_doc !== '-' ? ', CNPJ nº ' + item.company_doc : ''}`;
-            html += P("Nome do órgão/instituição:", orgaoCompleto);
+            html += P("Nome da Organização:", orgaoCompleto);
             html += P("Objeto:", objText);
             html += P("Data da Assinatura:", item.validity_start || '-');
             html += P("Data da Publicação:", item.date);
 
             const vigInicio = item.validity_start || '-';
             const vigFim = item.validity_end || '-';
-            html += P("Vigência:", `de ${vigInicio} a ${vigFim}`);
+            html += P("Vigência:", `${vigInicio} a ${vigFim}`);
         }
 
         // --- LAYOUT PARCERIA (Convênios, Fomento) ---

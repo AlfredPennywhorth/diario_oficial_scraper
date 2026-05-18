@@ -105,6 +105,44 @@ def run_tests():
     assert data_f['validade_inicio'] == '17/11/2025'
     assert data_f['validade_fim'] == '17/11/2030'
 
+    # CENÁRIO G: Acordo de Cooperação Real MAPFRE
+    print("\nCenário G: Acordo de Cooperação MAPFRE")
+    text_g = """
+    Número do Processo: 7410.2026/0003378-0
+    Número da Publicação: PUBLICACAO ACORDO DE COOPERAÇÃO 001/2026
+    Documento: 157353067
+    Objeto: CELEBRAÇÃO DE ACORDO DE COOPERAÇÃO PARA A REALIZAÇÃO DE ATIVIDADES DE EDUCAÇÃO PARA O TRÂNSITO
+    Licitante Vencedor: -
+    Modalidade: -
+    Data da Abertura: -
+    Data de Publicação: 14/05/2026
+    ... texto completo ...
+    FUNDACION MAPFRE, CNPJ 64.916.265/0001-17. Data da Assinatura: 05/05/2026. Vigência: 10/05/2026 a 03/10/2026.
+    """
+    data_g = {"modality": "-", "sintese": text_g, "num_contrato": "-", "tipo_doc": "OUTRO", "contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contract_info(text_g, data_g)
+    scraper._classify_document(text_g, data_g)
+    scraper._extract_dates(text_g, data_g)
+    scraper._extract_contractor(text_g, data_g)
+    
+    obj_text = scraper.extract_object(text_g)
+    
+    print(f"  -> Tipo: {data_g['tipo_doc']} (Esperado: ACORDO_COOPERACAO)")
+    print(f"  -> Termo: {data_g['num_contrato']} (Esperado: Acordo de Cooperação 001/26)")
+    print(f"  -> Organização: {data_g['contractor']} (Esperado: FUNDACION MAPFRE)")
+    print(f"  -> CNPJ: {data_g['doc_fiscal']} (Esperado: 64.916.265/0001-17)")
+    print(f"  -> Objeto: {obj_text} (Esperado: REALIZAÇÃO DE ATIVIDADES DE EDUCAÇÃO PARA O TRÂNSITO)")
+    print(f"  -> Início: {data_g['validade_inicio']} (Esperado: 05/05/2026)")
+    print(f"  -> Fim: {data_g['validade_fim']} (Esperado: 03/10/2026)")
+    
+    assert data_g['tipo_doc'] == 'ACORDO_COOPERACAO'
+    assert '001/26' in data_g['num_contrato']
+    assert 'MAPFRE' in data_g['contractor']
+    assert '64.916.265/0001-17' in data_g.get('doc_fiscal', '')
+    assert 'CELEBRAÇÃO' not in obj_text.upper()
+    assert data_g['validade_inicio'] == '05/05/2026'
+    assert data_g['validade_fim'] == '03/10/2026'
+
     print("\n=== TODOS OS TESTES PASSARAM COM SUCESSO! ===")
 
 if __name__ == "__main__":

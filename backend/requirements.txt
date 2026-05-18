@@ -6,3 +6,6 @@ pydantic
 tenacity
 google-generativeai
 python-dotenv
+websockets
+aiohttp
+packaging

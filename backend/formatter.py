@@ -254,11 +254,11 @@ class DiarioFormatter:
         </div>
         <span class="label">Número do processo:</span> <a href="{r.link_html}" target="_blank">{r.process_number}</a><br>
         <span class="label">Número do termo:</span> <a href="{r.link_pdf}" target="_blank">{formatted_num}</a><br>
-        <span class="label">Nome do órgão/instituição:</span> <span class="val">{orgao_completo}</span><br>
+        <span class="label">Nome da Organização:</span> <span class="val">{orgao_completo}</span><br>
         <span class="label">Objeto:</span> <span class="val">{r.object_text}</span><br>
         <span class="label">Data da Assinatura:</span> <span class="val">{r.validity_start}</span><br>
         <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
-        <span class="label">Vigência:</span> <span class="val">de {vig_inicio} a {vig_fim}</span>
+        <span class="label">Vigência:</span> <span class="val">{vig_inicio} a {vig_fim}</span>
         </div>"""
 
     def formatar_destaque(self, r: SearchResult) -> str:
