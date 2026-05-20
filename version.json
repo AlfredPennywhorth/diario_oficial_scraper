@@ -1,6 +1,6 @@
 {
   "version": "1.5.0",
-  "release_date": "2026-05-18",
+  "release_date": "2026-05-20",
   "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.0/DiarioScraper-v1.5.0.zip",
   "changelog": [
     "Refatoração completa do parser: modularizado e mais robusto",

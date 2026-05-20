@@ -187,6 +187,48 @@ def run_tests():
     print(f"  -> Tipo: {data_j['tipo_doc']} (Esperado: PEDIDO_COMPRA ou DISPENSA)")
     assert data_j['tipo_doc'] in ['PEDIDO_COMPRA', 'DISPENSA']
 
+    print("\nCenário K: Teste de Formatação Final de Acordo de Cooperação")
+    item_k = SearchResult(
+        date="14/05/2026",
+        term="Geral",
+        process_number="7410.2026/0003378-0",
+        document_id="157353067",
+        summary="COMPANHIA DE ENGENHARIA DE TRÁFEGO...",
+        object_text="REALIZAÇÃO DE ATIVIDADES DE EDUCAÇÃO PARA O TRÂNSITO",
+        contractor="FUNDACION MAPFRE",
+        company_doc="64.916.265/0001-17",
+        contract_number="Acordo de Cooperação 001/26",
+        validity_start="10/05/2026",
+        validity_end="03/10/2026",
+        value="-",
+        link_html="http://exemplo.com/html",
+        link_pdf="http://exemplo.com/pdf",
+        modality="-",
+        opening_date="-",
+        amendment_number="",
+        parent_contract="",
+        doc_type="ACORDO_COOPERACAO",
+        data_assinatura="05/05/2026"
+    )
+    
+    html_output = formatter.formatar_html([item_k])
+    
+    print("  -> Verificando presenca do cabecalho...")
+    assert "RESULTADOS - DIÁRIO OFICIAL" in html_output or "RESULTADOS - DI" in html_output
+    
+    print("  -> Verificando presença de campos obrigatórios...")
+    assert "Número do Termo" in html_output
+    assert "Nome da Organização" in html_output
+    assert "Data da Assinatura" in html_output
+    assert "Vigência" in html_output
+    
+    print("  -> Verificando ausência de campos proibidos...")
+    assert "Número da Publicação" not in html_output
+    assert "Documento" not in html_output
+    assert "Licitante Vencedor" not in html_output
+    assert "Modalidade" not in html_output
+    assert "Data da Abertura" not in html_output
+
     print("\n=== TODOS OS TESTES PASSARAM COM SUCESSO! ===")
 
 if __name__ == "__main__":

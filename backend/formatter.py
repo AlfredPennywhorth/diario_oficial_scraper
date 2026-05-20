@@ -58,7 +58,10 @@ class DiarioFormatter:
         if any(x in txt for x in ["CONTRATO Nº", "CONTRATO N.º", "CONTRATO N°", "FORMALIZAÇÃO DO CONTRATO", "EXTRATO DE CONTRATO"]):
             return "CONTRATO"
 
-        if any(x in txt for x in ["ACORDO DE COOPERAÇÃO", "TERMO DE PARCERIA", "CONVÊNIO", "TERMO DE FOMENTO"]):
+        if any(x in txt for x in ["ACORDO DE COOPERAÇÃO", "ACORDO DE COOPERACAO", "ACORDO DE COOPERAO"]):
+            return "ACORDO_COOPERACAO"
+
+        if any(x in txt for x in ["TERMO DE PARCERIA", "CONVÊNIO", "TERMO DE FOMENTO"]):
             return "PARCERIA"
 
         termos_diversos = ["ESCLARECIMENTO", "QUESTIONAMENTO", "IMPUGNAÇ", "IMPUGNAC", "NOTIFICAÇÃO", "DESPACHO", "PAGAMENTO"]
@@ -184,7 +187,7 @@ class DiarioFormatter:
         
         modalidade = r.modality if r.modality != "-" else self.extrair_modalidade(r.summary)
         vigencia = f"{r.validity_start} a {r.validity_end}" if r.validity_end != "-" else "Ver íntegra"
-
+ 
         return f"""<div class="card contrato">
         <div style="background-color: #f0fff4; padding: 5px; border-bottom: 1px solid #10b981; margin-bottom: 10px;">
             <strong>📜 EXTRATO DE CONTRATO</strong>
@@ -223,7 +226,7 @@ class DiarioFormatter:
         if r.contractor and r.contractor != "-":
             doc = self.anonimizar_cpf(r.company_doc if r.company_doc else "")
             contratada_full = f"{r.contractor}, CNPJ/CPF {doc}"
-
+ 
         return f"""<div class="card compra">
         <div style="background-color: #e3f2fd; padding: 5px; border-bottom: 1px solid #ddd; margin-bottom: 10px;">
             <strong>🛒 PEDIDO DE COMPRA / DISPENSA</strong>
@@ -234,10 +237,23 @@ class DiarioFormatter:
         <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
         <span class="label">Valor:</span> <span class="val">{r.value}</span><br>
         </div>"""
-
+ 
     def formatar_acordo_cooperacao(self, r: SearchResult) -> str:
         """Formata card de Acordo de Cooperação / Parceria"""
-        formatted_num = r.contract_number if r.contract_number != "-" else "S/N"
+        raw_num = getattr(r, 'contract_number', '') or getattr(r, 'num_contrato', '') or getattr(r, 'publication_number', '') or ''
+        if not raw_num or raw_num == "-":
+            raw_num = "S/N"
+            
+        termo_norm = raw_num
+        termo_norm = re.sub(r'(?i)PUBLICACAO', '', termo_norm)
+        termo_norm = re.sub(r'(?i)nº', '', termo_norm)
+        termo_norm = re.sub(r'(?i)n\.º', '', termo_norm)
+        termo_norm = re.sub(r'(?i)N°', '', termo_norm)
+        termo_norm = re.sub(r'(?i)n°', '', termo_norm)
+        termo_norm = re.sub(r'\s+', ' ', termo_norm).strip()
+        if not termo_norm:
+            termo_norm = "S/N"
+
         orgao_completo = r.contractor if r.contractor != "-" else "-"
         if r.company_doc and r.company_doc != "-":
             orgao_completo += f", CNPJ nº {r.company_doc}"
@@ -245,22 +261,22 @@ class DiarioFormatter:
         vig_inicio = r.validity_start if r.validity_start != "-" else "-"
         vig_fim = r.validity_end if r.validity_end != "-" else "-"
         
-        # Se for especificamente um Acordo de Cooperação, usamos o rótulo adequado
-        label_principal = "🤝 ACORDO DE COOPERAÇÃO" if "ACORDO" in formatted_num.upper() or r.doc_type == "ACORDO_COOPERACAO" else "🤝 PARCERIA / CONVÊNIO"
+        process_link = r.link_html if r.link_html else "#"
+        term_link = r.link_pdf if r.link_pdf else "#"
 
         return f"""<div class="card parceria">
         <div style="background-color: #e8f5e9; padding: 5px; border-bottom: 1px solid #22c55e; margin-bottom: 10px;">
-            <strong>{label_principal}</strong>
+            <strong>🤝 ACORDO DE COOPERAÇÃO</strong>
         </div>
-        <span class="label">Número do processo:</span> <a href="{r.link_html}" target="_blank">{r.process_number}</a><br>
-        <span class="label">Número do termo:</span> <a href="{r.link_pdf}" target="_blank">{formatted_num}</a><br>
+        <span class="label">Número do Processo:</span> <a href="{process_link}" target="_blank">{r.process_number}</a><br>
+        <span class="label">Número do Termo:</span> <a href="{term_link}" target="_blank">{termo_norm}</a><br>
         <span class="label">Nome da Organização:</span> <span class="val">{orgao_completo}</span><br>
         <span class="label">Objeto:</span> <span class="val">{r.object_text}</span><br>
-        <span class="label">Data da Assinatura:</span> <span class="val">{r.data_assinatura if r.data_assinatura else r.validity_start}</span><br>
-        <span class="label">Data da Publicação:</span> <span class="val">{r.date}</span><br>
+        <span class="label">Data da Assinatura:</span> <span class="val">{r.data_assinatura if r.data_assinatura else "-"}</span><br>
+        <span class="label">Data de Publicação:</span> <span class="val">{r.date}</span><br>
         <span class="label">Vigência:</span> <span class="val">{vig_inicio} a {vig_fim}</span>
         </div>"""
-
+ 
     def formatar_destaque(self, r: SearchResult) -> str:
         """Formata card de destaque (Homologação/Adjudicação)"""
         vencedor = r.contractor
@@ -280,7 +296,7 @@ class DiarioFormatter:
              <a href="{r.link_pdf}" class="btn" style="background-color: #2563eb; color: white; padding: 5px 10px; border-radius: 4px; text-decoration: none;">Abrir 📄</a>
         </div>
         </div>"""
-
+ 
     def formatar_html(self, results: List[SearchResult]) -> str:
         """Formata todos os resultados em HTML"""
         if not results:
@@ -289,13 +305,38 @@ class DiarioFormatter:
         html = f"{self.css}\n<h2>📋 RESULTADOS - DIÁRIO OFICIAL</h2>\n"
         
         for r in results:
+            pub_num = getattr(r, 'publication_number', '') or ''
+            cont_num = getattr(r, 'contract_number', '') or ''
+            num_contrato = getattr(r, 'num_contrato', '') or ''
+            
+            def contains_acordo(s):
+                if not s:
+                    return False
+                s_lower = s.lower()
+                return (
+                    "acordo de coopera" in s_lower or 
+                    "acordo de colabora" in s_lower or
+                    "acordo de cooperacao" in s_lower
+                )
+
+            is_acordo = (
+                r.doc_type == "ACORDO_COOPERACAO" or
+                getattr(r, 'type', None) == "ACORDO_COOPERACAO" or
+                contains_acordo(pub_num) or
+                contains_acordo(cont_num) or
+                contains_acordo(num_contrato)
+            )
+            if is_acordo:
+                html += self.formatar_acordo_cooperacao(r)
+                continue
+
             if r.doc_type == "PEDIDO_COMPRA":
                 html += self.formatar_pedido_compra(r)
                 continue
             elif r.doc_type == "HOMOLOGACAO":
                 html += self.formatar_destaque(r)
                 continue
-            elif r.doc_type == "ACORDO_COOPERACAO" or r.doc_type == "PARCERIA":
+            elif r.doc_type == "PARCERIA":
                 html += self.formatar_acordo_cooperacao(r)
                 continue
             elif r.doc_type == "DOACAO":
@@ -305,9 +346,9 @@ class DiarioFormatter:
                  <span class="label">Data:</span> {r.date}
                  </div>"""
                  continue
-
+ 
             tipo = self.classificar_tipo(r.summary, r.doc_type)
-
+ 
             if tipo == "ADITAMENTO":
                 html += self.formatar_aditamento(r)
             elif tipo == "CONTRATO" or r.doc_type == "EMPENHO":
