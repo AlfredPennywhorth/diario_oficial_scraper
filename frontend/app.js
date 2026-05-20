@@ -117,9 +117,9 @@ function determineType(item) {
             tipo = 'ADITAMENTO';
         } else if (fullTerm.includes('CONTRATO Nº') || fullTerm.includes('CONTRATO N.º') || fullTerm.includes('FORMALIZAÇÃO DO CONTRATO') || fullTerm.includes('EXTRATO DE CONTRATO')) {
             tipo = 'CONTRATO';
-        } else if (fullTerm.includes('ACORDO DE COOPERAÇÃO') || fullTerm.includes('ACORDO DE COOPERACAO')) {
+        } else if (/\b(ACORDOS?\ DE\ COOPERA[ÇC][ÃA]O|TERMO\ DE\ COOPERA[ÇC][ÃA]O)\b/.test(fullTerm)) {
             tipo = 'ACORDO_COOPERACAO';
-        } else if (fullTerm.includes('PARCERIA') || fullTerm.includes('CONVÊNIO') || fullTerm.includes('TERMO DE FOMENTO')) {
+        } else if (/\b(TERMO\ DE\ PARCERIA|CONV[ÊE]NIO|TERMO\ DE\ FOMENTO|TERMO\ DE\ COLABORA[ÇC][ÃA]O)\b/.test(fullTerm)) {
             tipo = 'PARCERIA';
         } else if (fullTerm.includes('ESCLARECIMENTO') || fullTerm.includes('QUESTIONAMENTO') || fullTerm.includes('IMPUGNAÇ') || fullTerm.includes('NOTIFICAÇÃO') || fullTerm.includes('DESPACHO')) {
             tipo = 'DIVERSOS';
@@ -421,7 +421,7 @@ function renderTextView(results) {
             const orgaoCompleto = `${item.contractor || '-'} ${item.company_doc && item.company_doc !== '-' ? ', CNPJ nº ' + item.company_doc : ''}`;
             html += P("Nome da Organização:", orgaoCompleto);
             html += P("Objeto:", objText);
-            html += P("Data da Assinatura:", item.validity_start || '-');
+            html += P("Data da Assinatura:", item.data_assinatura || item.validity_start || '-');
             html += P("Data da Publicação:", item.date);
 
             const vigInicio = item.validity_start || '-';

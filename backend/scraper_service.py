@@ -142,6 +142,9 @@ class DiarioScraper:
                         if not data.get(key) or len(valor) > len(data.get(key, "")):
                              data[key] = valor
 
+        if data.get("explicit_object"):
+            data['explicit_object'] = re.sub(r'(?i)^(?:CELEBRA[ÇC][ÃA]O\s+DE\s+ACORDO\s+DE\s+COOPERA[ÇC][ÃA]O\s+PARA\s+(?:A\s+)?|OBJETO:\s*)', '', data['explicit_object']).strip()
+
     def _extract_modality(self, text, data):
         if data.get('modality') in ["-", "", None]:
             m_mod = re.search(r'(PREGÃO ELETRÔNICO|PREGÃO|CONCORRÊNCIA|TOMADA DE PREÇOS|CONVITE|LEILÃO|DIÁLOGO COMPETITIVO|INEXIGIBILIDADE|DISPENSA)', text, re.IGNORECASE)
@@ -157,19 +160,29 @@ class DiarioScraper:
             if m_cnpj:
                 data['doc_fiscal'] = m_cnpj.group(1)
 
+        if data.get('contractor') not in ["-", "", None] and len(data.get('contractor', '')) > 20:
+             m_acordo_org = re.search(r'celebra[çc][ãa]o do Acordo de Coopera[çc][ãa]o.*?com a\s+([A-ZÇÃÕÁÉÍÓÚ\s]+)(?:\.|,|$)', data['contractor'], re.IGNORECASE)
+             if m_acordo_org:
+                 data['contractor'] = m_acordo_org.group(1).strip()
+
         if data.get('contractor') in ["-", "", None]:
-             patterns = [
+             # Regra específica para Acordo de Cooperação
+             m_acordo_org = re.search(r'celebra[çc][ãa]o do Acordo de Coopera[çc][ãa]o.*?com a\s+([A-ZÇÃÕÁÉÍÓÚ\s]+)(?:\.|,|$)', text, re.IGNORECASE)
+             if m_acordo_org:
+                 data['contractor'] = m_acordo_org.group(1).strip()
+             else:
+                 patterns = [
                  r'(?:Vencedor(?:es)?|Adjudicado para|Empresa|Contratada|Partícipe)\s*[:\.-]?\s*([A-ZÇÃÕÁÉÍÓÚ\s\.,&LTDA\-]+?)(?:,?\s*CNPJ|CPF|$)',
                  r'Empresa\s+([A-ZÇÃÕÁÉÍÓÚ\s\.,&LTDA\-]+?)\s+,',
                  r'([^.\n:;]{5,120}?)(?:,?\s*CNPJ|CPF)'
              ]
-             for p in patterns:
-                 m_winner = re.search(p, text, re.IGNORECASE)
-                 if m_winner:
-                      candidate = m_winner.group(1).strip().rstrip(',.-')
-                      if len(candidate) > 3 and "PROCESS" not in candidate.upper() and "PUBLICACAO" not in candidate.upper():
-                           data['contractor'] = candidate
-                           break
+                 for p in patterns:
+                     m_winner = re.search(p, text, re.IGNORECASE)
+                     if m_winner:
+                          candidate = m_winner.group(1).strip().rstrip(',.-')
+                          if len(candidate) > 3 and "PROCESS" not in candidate.upper() and "PUBLICACAO" not in candidate.upper():
+                               data['contractor'] = candidate
+                               break
         
         # Fix concatenated CPFs (e.g. ...178-34074.999...)
         doc = data.get('doc_fiscal', '')
@@ -248,15 +261,23 @@ class DiarioScraper:
                 vig_start = normalize_date(m.group(1))
                 vig_end = normalize_date(m.group(2))
                 
-                # Se não tínhamos data de assinatura, usamos o início da vigência
+                # Se não extraiu vigencia_inicio (assinatura) ainda, usa a data mais antiga
                 if not validade_inicio:
                     validade_inicio = vig_start
-                    
-                # Sempre salvamos o fim da vigência
-                validade_fim = vig_end
-                
+                data['validity_start'] = vig_start
+                data['validity_end'] = vig_end
                 found_vig = True
                 break
+
+        if not found_vig:
+            m_vig2 = re.search(r'(\d{2}[/.]\d{2}[/.]\d{4})\s*a\s*(\d{2}[/.]\d{2}[/.]\d{4})', text)
+            if m_vig2:
+                data['validity_start'] = normalize_date(m_vig2.group(1))
+                data['validity_end'] = normalize_date(m_vig2.group(2))
+                found_vig = True
+
+        data['data_assinatura'] = validade_inicio
+        validade_fim = data.get('validity_end') or "-"
         
         if not found_vig and validade_inicio and data.get('prazo'):
             try:
@@ -286,6 +307,10 @@ class DiarioScraper:
 
         data['validade_inicio'] = validade_inicio
         data['validade_fim'] = validade_fim
+        if 'validity_start' not in data:
+            data['validity_start'] = validade_inicio if validade_inicio else "-"
+        if 'validity_end' not in data:
+            data['validity_end'] = validade_fim if validade_fim else "-"
 
     def _classify_document(self, text, data):
         """Classifica o documento conforme hierarquia e termos fortes"""
@@ -303,11 +328,11 @@ class DiarioScraper:
              return
 
         # 3. ACORDO DE COOPERAÇÃO / PARCERIA / CONVÊNIO
-        if any(x in txt for x in ["ACORDO DE COOPERAÇÃO", "ACORDO DE COOPERACAO"]):
+        if re.search(r'\b(?:ACORDOS?\ DE\ COOPERA[ÇC][ÃA]O|TERMO\ DE\ COOPERA[ÇC][ÃA]O)\b', txt):
              data['tipo_doc'] = 'ACORDO_COOPERACAO'
              return
 
-        if any(x in txt for x in ["TERMO DE PARCERIA", "CONVÊNIO", "CONVENIO", "TERMO DE FOMENTO", "TERMO DE COLABORAÇÃO", "TERMO DE COLABORACAO"]):
+        if re.search(r'\b(?:TERMO\ DE\ PARCERIA|CONV[ÊE]NIO|TERMO\ DE\ FOMENTO|TERMO\ DE\ COLABORA[ÇC][ÃA]O)\b', txt):
              data['tipo_doc'] = 'PARCERIA'
              return
 
@@ -400,8 +425,23 @@ class DiarioScraper:
                     details['modality'] = ai_data['modality'].upper()
                     if any(x in details['modality'] for x in ["DIVERSOS", "ATA", "JULGAMENTO"]):
                         details['tipo_doc'] = 'DIVERSOS'
-                    elif "ACORDO DE COOPERA" in details['modality']:
+                    elif "ACORDO DE COOPERA" in details['modality'] or "TERMO DE COOPERA" in details['modality']:
                          details['tipo_doc'] = 'ACORDO_COOPERACAO'
+
+            # --- PROTEÇÃO ABSOLUTA DA CLASSIFICAÇÃO DE ACORDO DE COOPERAÇÃO ---
+            # Independentemente do que a IA disse, se for Acordo de Cooperação, forçamos o tipo.
+            num_contrato_up = details.get('contract_number', '').upper()
+            summary_up = details.get('summary', '').upper()
+            full_body_up = details.get('explicit_object', '').upper() + " " + item_html.upper()
+            
+            if re.search(r'\b(?:ACORDOS?\ DE\ COOPERA[ÇC][ÃA]O|TERMO\ DE\ COOPERA[ÇC][ÃA]O)\b', num_contrato_up) or \
+               re.search(r'\b(?:ACORDOS?\ DE\ COOPERA[ÇC][ÃA]O|TERMO\ DE\ COOPERA[ÇC][ÃA]O)\b', summary_up) or \
+               re.search(r'\b(?:ACORDOS?\ DE\ COOPERA[ÇC][ÃA]O|TERMO\ DE\ COOPERA[ÇC][ÃA]O)\b', full_body_up):
+                # Salvo se for claramente aditamento
+                if 'ADITAMENTO' not in summary_up and 'ADITIVO' not in summary_up:
+                    details['tipo_doc'] = 'ACORDO_COOPERACAO'
+                    
+            # --- FIM PROTEÇÃO ---
         except Exception as e:
             logger.error(f"Falha na IA para doc {item_id}: {e}")
 

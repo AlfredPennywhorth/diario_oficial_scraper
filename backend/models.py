@@ -55,6 +55,7 @@ class SearchResult(BaseModel):
     contract_number: str = "-"
     validity_start: str = "-"
     validity_end: str = "-"
+    data_assinatura: str = ""
     link_html: str
     link_pdf: str
     modality: str = "-"
