@@ -95,7 +95,12 @@ version_data = {
         "Implementação de Blindagem: alertas automáticos para campos críticos ausentes",
         "Controle de Execução: prevenção de múltiplas instâncias simultâneas",
         "Resiliência: salvamento automático de resultados parciais em JSON",
-        "Isolamento da IA: chamadas opcionais com timeout de 30s e blindagem contra falhas"
+        "Isolamento da IA: chamadas opcionais com timeout de 30s e blindagem contra falhas",
+        "Correção do layout final de Acordo de Cooperação",
+        "Restauração/validação dos termos selecionáveis",
+        "Correção de cache/build do frontend",
+        "Ajustes em formatter.py e app.js",
+        "Suporte correto a Pedido de Compra/Dispensa sem regressão para parceria"
     ],
     "critical": False
 }
@@ -103,6 +108,7 @@ version_data = {
 # Salvar version.json
 with open('version.json', 'w', encoding='utf-8') as f:
     json.dump(version_data, f, indent=2, ensure_ascii=False)
+    f.write('\n')
 print("   [OK] version.json criado")
 
 # 6. Resumo final
