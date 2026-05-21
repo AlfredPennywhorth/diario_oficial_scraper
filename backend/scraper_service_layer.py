@@ -15,9 +15,15 @@ class ScraperService:
     def is_running(self) -> bool:
         return self._scraper.is_running
 
-    async def run(self, request: SearchRequest, status_callback=None, use_ai=True) -> List[SearchResult]:
+    async def run(self, request: SearchRequest, status_callback=None, use_ai=None) -> List[SearchResult]:
         """Executa o scraping baseado num objeto SearchRequest"""
-        logger.info(f"Iniciando serviço de scraping para {len(request.terms)} termos... (IA={use_ai})")
+        if use_ai is None:
+            use_ai = not request.dry_run
+
+        logger.info(f"Iniciando serviço de scraping para {len(request.terms)} termos... (IA={use_ai}, DryRun={request.dry_run})")
+
+        if request.dry_run and status_callback:
+            await status_callback("Modo dry-run ativo: coleta e formatação executadas sem integrações externas de envio.")
         
         return await self._scraper.scrape(
             start_date=request.start_date,

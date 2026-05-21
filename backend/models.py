@@ -7,6 +7,7 @@ class SearchRequest(BaseModel):
     end_date: str
     terms: List[str]
     categories: List[str] = []
+    dry_run: bool = False
 
     @field_validator('terms')
     @classmethod

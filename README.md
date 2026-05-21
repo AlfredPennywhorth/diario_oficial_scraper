@@ -23,6 +23,12 @@ Ferramenta de raspagem e auditoria do Diário Oficial da Cidade de São Paulo, f
    ```
    Acesse `http://127.0.0.1:8085` no seu navegador.
 
+## ⚙️ Modo Teste (Dry-run)
+
+O aplicativo possui uma opção de **Modo teste (dry-run)** na barra lateral:
+- **Operação local protegida:** Executa a raspagem e formatação completa sem acionar integrações externas de envio.
+- **Desativação inteligente da IA:** Quando ativo, desliga chamadas ao Gemini (IA) por padrão para economizar cota e agilizar testes.
+
 ## 🛡️ Diagnóstico de Navegador
 
 Se encontrar erros de "Nenhum navegador compatível", execute:
