@@ -10,8 +10,48 @@ from playwright.async_api import async_playwright, TimeoutError as PlaywrightTim
 from models import SearchResult
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+import unicodedata
+
 # Configuração de Logs
 logger = logging.getLogger(__name__)
+
+def _normalize_text(text: str) -> str:
+    if text is None:
+        return ""
+    text = str(text)
+    # Decompor caracteres Unicode para remover acentos (diacríticos)
+    normalized = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+    normalized = normalized.lower()
+    # Substituir múltiplos espaços por um único espaço
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip()
+
+TERM_PATTERNS = {
+    "acordo de cooperacao": ["cooperacao"],
+    "pregao": ["pregao"],
+    "aditamento": ["aditamento", "aditivo", "apostilamento"],
+    "termo de colaboracao": ["colaboracao"],
+    "termo de fomento": ["fomento"],
+    "termo de doacao": ["doacao"],
+    "termo de comodato": ["comodato"],
+    "nota de empenho": ["empenho"],
+    "contrato": ["contrato"]
+}
+
+def _match_term(term: str, text: str) -> tuple[bool, str | None]:
+    norm_term = _normalize_text(term)
+    norm_text = _normalize_text(text)
+    
+    patterns = TERM_PATTERNS.get(norm_term)
+    if patterns:
+        for p in patterns:
+            if p in norm_text:
+                return True, p
+        return False, None
+    else:
+        if norm_term in norm_text:
+            return True, norm_term
+        return False, None
 
 class DiarioScraper:
     def __init__(self, debug=False):
@@ -610,12 +650,15 @@ class DiarioScraper:
                         
                         matches_term = False
                         matched_term_name = "Geral"
-                        if not terms: matches_term = True
+                        if not terms:
+                            matches_term = True
                         else:
                             for t in terms:
-                                if t.lower() in txt.lower():
+                                matched, pattern = _match_term(t, txt)
+                                if matched:
                                     matches_term = True
                                     matched_term_name = t
+                                    logger.info(f"[FILTRO] Correspondencia encontrada para o termo '{t}' (padrao: '{pattern}') no texto: {txt[:150]}...")
                                     break
                         
                         if matches_term:

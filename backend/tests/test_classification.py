@@ -231,9 +231,74 @@ def run_tests():
 
     print("\n=== TODOS OS TESTES PASSARAM COM SUCESSO! ===")
 
+def test_term_matching():
+    print("\n=== INICIANDO TESTES DE CORRESPONDENCIA DE TERMOS FLEXIVEL ===")
+    from scraper_service import _normalize_text, _match_term
+    
+    # 1. "Acordo de Cooperação" encontra "ACORDOS DE COOPERAÇÃO"
+    matched, pattern = _match_term("Acordo de Cooperação", "EXTRATO DE ACORDOS DE COOPERAÇÃO")
+    print(f"  -> Acordo de Cooperação encontra ACORDOS DE COOPERAÇÃO: {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "cooperacao"
+    
+    # 2. "Acordo de Cooperação" encontra "Termo de Cooperação"
+    matched, pattern = _match_term("Acordo de Cooperação", "Termo de Cooperação n° 002/2026")
+    print(f"  -> Acordo de Cooperação encontra Termo de Cooperação: {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "cooperacao"
+    
+    # 3. "Acordo de Cooperação" encontra texto com "cooperação" acentuado
+    matched, pattern = _match_term("Acordo de Cooperação", "publicacao sobre cooperação tecnica")
+    print(f"  -> Acordo de Cooperação encontra cooperação: {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "cooperacao"
+    
+    # 4. "Pregão" encontra "PREGÃO ELETRÔNICO"
+    matched, pattern = _match_term("Pregão", "PREGÃO ELETRÔNICO N° 006/2025")
+    print(f"  -> Pregão encontra PREGÃO ELETRÔNICO: {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "pregao"
+    
+    # 5. "Pregão" não deve depender de "licitação" nesta primeira versão
+    matched, pattern = _match_term("Pregão", "AVISO DE LICITAÇÃO CONCORRÊNCIA N° 01/2026")
+    print(f"  -> Pregão NÃO encontra AVISO DE LICITAÇÃO (sem a palavra pregao): {matched} (padrao: {pattern})")
+    assert not matched
+    assert pattern is None
+    
+    # 6. "Aditamento" encontra "Aditivo"
+    matched, pattern = _match_term("Aditamento", "Termo aditivo ao contrato")
+    print(f"  -> Aditamento encontra Aditivo: {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "aditivo"
+    
+    # 7. "Aditamento" encontra "Apostilamento"
+    matched, pattern = _match_term("Aditamento", "Termo de Apostilamento n° 01")
+    print(f"  -> Aditamento encontra Apostilamento: {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "apostilamento"
+    
+    # 8. Termo desconhecido usa fallback pelo termo normalizado
+    matched, pattern = _match_term("Nota de Empenho", "empenho de recursos")
+    print(f"  -> Nota de Empenho encontra empenho: {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "empenho"
+    
+    matched, pattern = _match_term("Chamamento", "Chamamento público para parcerias")
+    print(f"  -> Chamamento encontra Chamamento (fallback): {matched} (padrao: {pattern})")
+    assert matched
+    assert pattern == "chamamento"
+    
+    matched, pattern = _match_term("Termo Desconhecido", "Outro texto qualquer")
+    print(f"  -> Termo Desconhecido não encontra texto qualquer: {matched} (padrao: {pattern})")
+    assert not matched
+    assert pattern is None
+    
+    print("\n=== TESTES DE CORRESPONDENCIA FLEXIVEL PASSARAM COM SUCESSO! ===")
+
 if __name__ == "__main__":
     try:
         run_tests()
+        test_term_matching()
     except Exception as e:
         print(f"\n❌ ERRO NOS TESTES: {e}")
         sys.exit(1)
