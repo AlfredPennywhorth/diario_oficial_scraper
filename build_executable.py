@@ -91,16 +91,12 @@ version_data = {
     "release_date": datetime.now().strftime("%Y-%m-%d"),
     "download_url": f"https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v{VERSION}/DiarioScraper-v{VERSION}.zip",
     "changelog": [
-        "Refatoração completa do parser: modularizado e mais robusto",
-        "Implementação de Blindagem: alertas automáticos para campos críticos ausentes",
-        "Controle de Execução: prevenção de múltiplas instâncias simultâneas",
-        "Resiliência: salvamento automático de resultados parciais em JSON",
-        "Isolamento da IA: chamadas opcionais com timeout de 30s e blindagem contra falhas",
-        "Correção do layout final de Acordo de Cooperação",
-        "Restauração/validação dos termos selecionáveis",
-        "Correção de cache/build do frontend",
-        "Ajustes em formatter.py e app.js",
-        "Suporte correto a Pedido de Compra/Dispensa sem regressão para parceria"
+        "Sistema de Auto-Atualização em 1 clique adicionado à barra de notificação (com limpeza de resíduos e reinício automático)",
+        "Design visual refinado baseado no Impeccable (visual limpo, OKLCH, Space Grotesk + Instrument Sans)",
+        "Máscara oficial do CNPJ/CPF aplicada automaticamente com formatação padronizada",
+        "Valor por extenso em português adicionado ao campo de Valor no Texto de Email",
+        "Proteção contra duplicidade de valor por extenso em execuções com IA ativa",
+        "Correção do título de cabeçalho na visualização de email (removendo MAPFRE FIX)"
     ],
     "critical": False
 }

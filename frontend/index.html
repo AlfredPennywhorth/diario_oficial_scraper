@@ -5,8 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diário Oficial Scraper</title>
-    <link rel="stylesheet" href="/static/style.css?v=3">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=1.5.2">
+    <!-- Google Fonts: Space Grotesk, Instrument Sans, JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -19,8 +22,11 @@
             <span id="updateMessage">Nova versão disponível!</span>
         </div>
         <div class="update-actions">
-            <a id="updateLink" class="btn-update" href="#" target="_blank">
-                <i class="fa-solid fa-download"></i> Baixar Atualização
+            <button id="btnAutoUpdate" class="btn-update" onclick="startAutoUpdate()">
+                <i class="fa-solid fa-bolt"></i> Atualizar Agora
+            </button>
+            <a id="updateLink" class="btn-update-link" href="#" target="_blank" title="Baixar ZIP manualmente">
+                <i class="fa-solid fa-download"></i> Manual
             </a>
             <button class="btn-dismiss" onclick="dismissUpdate()" title="Dispensar">
                 <i class="fa-solid fa-xmark"></i>
@@ -47,7 +53,7 @@
 
             <div class="control-group">
                 <label>Tipos de Documento a Pesquisar</label>
-                <div id="searchTermsCheckboxes" class="checkbox-group" style="display: flex; flex-direction: column; gap: 8px; margin-top: 5px; font-size: 0.9em;">
+                <div id="searchTermsCheckboxes" class="checkbox-group">
                     <label><input type="checkbox" name="searchTerm" value="Contrato" checked> Contrato</label>
                     <label><input type="checkbox" name="searchTerm" value="Aditamento" checked> Aditamento</label>
                     <label><input type="checkbox" name="searchTerm" value="Pregão" checked> Pregão / Licitação</label>
@@ -60,8 +66,8 @@
                 </div>
             </div>
 
-            <div class="control-group" style="margin-top: 15px; margin-bottom: 15px;">
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.95em;"><input type="checkbox" id="dryRunToggle"> Modo teste (dry-run, sem envio externo)</label>
+            <div class="control-group dry-run">
+                <label class="checkbox-label"><input type="checkbox" id="dryRunToggle"> Modo teste (dry-run, sem envio externo)</label>
             </div>
 
             <button id="btnSearch" class="btn-primary" onclick="startSearch()">
@@ -81,10 +87,8 @@
                 </div>
             </div>
 
-            <div id="versionFooter" class="footer-version"
-                style="margin-top: auto; padding-top: 20px; color: #666; font-size: 0.8em; text-align: center;">
-                <i class="fa-solid fa-spinner fa-spin" style="margin-right: 5px;"></i> Carregando versão... (v1.3.0
-                Check)
+            <div id="versionFooter" class="footer-version">
+                <i class="fa-solid fa-spinner fa-spin"></i> Carregando versão...
             </div>
         </aside>
 
@@ -130,7 +134,7 @@
         </main>
     </div>
 
-    <script src="/static/app.js?v=3"></script>
+    <script src="/static/app.js?v=1.5.2"></script>
 </body>
 
 </html>

@@ -87,6 +87,272 @@ async def check_update():
         return {"available": False, "current_version": get_current_version(), "error": "Erro ao verificar atualizações"}
     return update_info.to_dict()
 
+@app.post("/api/start-update")
+async def start_update():
+    import aiohttp
+    import subprocess
+    import zipfile
+    
+    # 1. Determinar caminhos
+    if getattr(sys, 'frozen', False):
+        app_dir = os.path.dirname(sys.executable)
+    else:
+        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        
+    update_dir = os.path.join(app_dir, "update")
+    os.makedirs(update_dir, exist_ok=True)
+    
+    lock_path = os.path.join(update_dir, "update.lock")
+    zip_path = os.path.join(update_dir, "update_temp.zip")
+    ps_path = os.path.join(update_dir, "update_helper.ps1")
+    
+    # 2. Verificar se já existe atualização em andamento
+    if os.path.exists(lock_path):
+        logger.warning("Tentativa de atualização rejeitada: arquivo lock já existe.")
+        raise HTTPException(status_code=409, detail="Atualização já em andamento (travado por lock).")
+        
+    try:
+        # Criar o arquivo de lock
+        with open(lock_path, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+            
+        # 3. Consultar versão disponível
+        update_info = await check_for_updates()
+        if not update_info or not update_info.available or not update_info.download_url:
+            raise HTTPException(status_code=400, detail="Nenhuma atualização disponível para download.")
+            
+        url = update_info.download_url
+        logger.info(f"Iniciando download da atualização de {url} para {zip_path}")
+        
+        # 4. Baixar o ZIP da release
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                if response.status != 200:
+                    raise HTTPException(status_code=500, detail=f"Erro de download: HTTP {response.status}")
+                with open(zip_path, "wb") as f:
+                    while True:
+                        chunk = await response.content.read(65536)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+        logger.info("Download do ZIP concluído.")
+        
+        # 5. Validar o ZIP baixado
+        if not os.path.exists(zip_path):
+            raise HTTPException(status_code=500, detail="Arquivo ZIP não foi salvo fisicamente.")
+            
+        zip_size = os.path.getsize(zip_path)
+        if zip_size < 500 * 1024: # Pelo menos 500KB
+            raise HTTPException(status_code=400, detail=f"Arquivo ZIP baixado está incompleto ou corrompido (tamanho: {zip_size} bytes).")
+            
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                namelist = z.namelist()
+                has_exe = any(name.endswith("DiarioScraper.exe") for name in namelist)
+                has_main = any(name.endswith("backend/main.py") for name in namelist)
+                if not (has_exe or has_main):
+                    raise Exception("A estrutura interna do ZIP não contém o executável esperado ou backend/main.py.")
+        except Exception as z_err:
+            raise HTTPException(status_code=400, detail=f"ZIP inválido ou ilegível: {str(z_err)}")
+            
+        # 6. Gerar update_helper.ps1
+        app_dir_esc = app_dir.replace("\\", "/")
+        ps_content = f"""# Script de Autoupdate para DiarioScraper
+$AppDir = "{app_dir_esc}"
+$UpdateDir = Join-Path $AppDir "update"
+$ZipPath = Join-Path $UpdateDir "update_temp.zip"
+$TempExtract = Join-Path $UpdateDir "extracted"
+$LockPath = Join-Path $UpdateDir "update.lock"
+$ParentPid = {os.getpid()}
+
+$Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+
+# Garantir estrutura de logs e backups
+if (-not (Test-Path (Join-Path $AppDir "logs"))) {{ New-Item -ItemType Directory -Path (Join-Path $AppDir "logs") -Force }}
+if (-not (Test-Path (Join-Path $AppDir "backups"))) {{ New-Item -ItemType Directory -Path (Join-Path $AppDir "backups") -Force }}
+
+$LogPath = Join-Path $AppDir "logs/update_$Timestamp.log"
+
+function Write-Log {{
+    param([string]$message)
+    $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Add-Content -Path $LogPath -Value "[$time] $message"
+}}
+
+Write-Log "Iniciando processo de atualizacao automatica..."
+Write-Log "Caminho do aplicativo: $AppDir"
+Write-Log "PID do processo pai a encerrar: $ParentPid"
+
+# 1. Aguardar encerramento do processo principal
+Write-Log "Aguardando o encerramento do processo pai..."
+$Timeout = 10
+$Elapsed = 0
+$Closed = $false
+while ($Elapsed -lt $Timeout) {{
+    $proc = Get-Process -Id $ParentPid -ErrorAction SilentlyContinue
+    if (-not $proc) {{
+        $Closed = $true
+        break
+    }}
+    Start-Sleep -Seconds 1
+    $Elapsed++
+}}
+
+if (-not $Closed) {{
+    Write-Log "Processo pai nao encerrou no tempo limite. Forcando finalizacao..."
+    Stop-Process -Id $ParentPid -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+}} else {{
+    Write-Log "Processo pai encerrou com sucesso."
+}}
+
+# 2. Validar arquivo ZIP antes de aplicar
+Write-Log "Validando arquivo ZIP..."
+if (-not (Test-Path $ZipPath)) {{
+    Write-Log "ERRO: Arquivo ZIP nao encontrado em $ZipPath"
+    if (Test-Path $LockPath) {{ Remove-Item -Force $LockPath }}
+    exit
+}}
+
+# 3. Extrair ZIP para update/extracted
+Write-Log "Extraindo arquivos para $TempExtract..."
+if (Test-Path $TempExtract) {{ Remove-Item -Recurse -Force $TempExtract }}
+try {{
+    Expand-Archive -Path $ZipPath -DestinationPath $TempExtract -Force
+    Write-Log "Extração concluída com sucesso."
+}} catch {{
+    Write-Log "ERRO ao extrair ZIP: $_"
+    if (Test-Path $LockPath) {{ Remove-Item -Force $LockPath }}
+    exit
+}}
+
+# 4. Validar estrutura extraída
+Write-Log "Validando estrutura de arquivos extraídos..."
+$ExePath = Join-Path $TempExtract "DiarioScraper.exe"
+$MainPath = Join-Path $TempExtract "backend/main.py"
+if (-not (Test-Path $ExePath) -and -not (Test-Path $MainPath)) {{
+    Write-Log "ERRO: Arquivos extraídos invalidos. Executável principal ou backend/main.py nao encontrado."
+    if (Test-Path $LockPath) {{ Remove-Item -Force $LockPath }}
+    exit
+}}
+
+# 5. Criar backup da instalação atual (apenas arquivos controlados)
+$BackupDir = Join-Path $AppDir "backups/backup_before_update_$Timestamp"
+Write-Log "Criando backup em $BackupDir..."
+try {{
+    New-Item -ItemType Directory -Path $BackupDir -Force
+    $Controlled = @("DiarioScraper.exe", "_internal", "frontend", "backend")
+    foreach ($item in $Controlled) {{
+        $src = Join-Path $AppDir $item
+        if (Test-Path $src) {{
+            Copy-Item -Path $src -Destination (Join-Path $BackupDir $item) -Recurse -Force
+        }}
+    }}
+    Write-Log "Backup concluído com sucesso."
+}} catch {{
+    Write-Log "ERRO ao criar backup: $_"
+    if (Test-Path $LockPath) {{ Remove-Item -Force $LockPath }}
+    exit
+}}
+
+# 6. Remover arquivos controlados antigos (preservando o resto)
+Write-Log "Removendo instalacao anterior (arquivos controlados)..."
+try {{
+    foreach ($item in $Controlled) {{
+        $src = Join-Path $AppDir $item
+        if (Test-Path $src) {{
+            Remove-Item -Path $src -Recurse -Force
+        }}
+    }}
+    Write-Log "Remoção concluída."
+}} catch {{
+    Write-Log "ERRO ao remover arquivos antigos: $_. Tentando restaurar backup..."
+    foreach ($item in $Controlled) {{
+        $back = Join-Path $BackupDir $item
+        if (Test-Path $back) {{
+            Copy-Item -Path $back -Destination (Join-Path $AppDir $item) -Recurse -Force
+        }}
+    }}
+    if (Test-Path $LockPath) {{ Remove-Item -Force $LockPath }}
+    exit
+}}
+
+# 7. Copiar novos arquivos
+Write-Log "Instalando nova versão..."
+try {{
+    Copy-Item -Path (Join-Path $TempExtract "*") -Destination $AppDir -Recurse -Force
+    Write-Log "Instalação concluída com sucesso."
+}} catch {{
+    Write-Log "ERRO ao copiar novos arquivos: $_. Tentando restaurar do backup..."
+    foreach ($item in $Controlled) {{
+        $back = Join-Path $BackupDir $item
+        if (Test-Path $back) {{
+            Copy-Item -Path $back -Destination (Join-Path $AppDir $item) -Recurse -Force
+        }}
+    }}
+    if (Test-Path $LockPath) {{ Remove-Item -Force $LockPath }}
+    exit
+}}
+
+# 8. Limpeza de temporários
+Write-Log "Limpando arquivos temporários..."
+if (Test-Path $TempExtract) {{ Remove-Item -Recurse -Force $TempExtract }}
+if (Test-Path $ZipPath) {{ Remove-Item -Force $ZipPath }}
+if (Test-Path $LockPath) {{ Remove-Item -Force $LockPath }}
+
+# 9. Iniciar nova versão
+Write-Log "Reiniciando aplicativo..."
+$NewExe = Join-Path $AppDir "DiarioScraper.exe"
+if (Test-Path $NewExe) {{
+    Start-Process -FilePath $NewExe -WorkingDirectory $AppDir
+    Write-Log "Executável reiniciado."
+}} else {{
+    Start-Process -FilePath "python" -ArgumentList "backend/main.py" -WorkingDirectory $AppDir
+    Write-Log "Python backend/main.py reiniciado."
+}}
+
+Write-Log "Processo de atualização finalizado com sucesso."
+Remove-Item $MyInvocation.MyCommand.Path -Force
+"""
+        with open(ps_path, "w", encoding="utf-8") as f:
+            f.write(ps_content)
+            
+        # 7. Executar o PowerShell desacoplado
+        logger.info("Disparando update_helper.ps1 desacoplado...")
+        subprocess.Popen(
+            ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", ps_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        )
+        
+        # 8. Agendar desligamento
+        async def shutdown():
+            await asyncio.sleep(1.5) # Pequeno delay para garantir retorno do JSON
+            logger.info("Encerrando aplicação para aplicar a atualização...")
+            os._exit(0)
+            
+        asyncio.create_task(shutdown())
+        
+        return {"status": "success", "message": "Atualização iniciada. A aplicação será reiniciada em instantes."}
+        
+    except Exception as e:
+        logger.error(f"Erro ao processar atualização: {e}", exc_info=True)
+        # Limpeza defensiva do lock e arquivos locais do servidor em caso de erro
+        if os.path.exists(lock_path):
+            try: os.remove(lock_path)
+            except: pass
+        if os.path.exists(zip_path):
+            try: os.remove(zip_path)
+            except: pass
+        if os.path.exists(ps_path):
+            try: os.remove(ps_path)
+            except: pass
+            
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Erro interno de atualização: {str(e)}")
+
 async def check_updates_on_startup():
     await asyncio.sleep(2)
     update_info = await check_for_updates()
