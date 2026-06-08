@@ -9,10 +9,10 @@ from scraper_service import DiarioScraper
 from formatter import DiarioFormatter
 from models import SearchResult
 
-def run_tests():
+def test_classification_scenarios():
     scraper = DiarioScraper()
     formatter = DiarioFormatter()
-    
+
     print("=== INICIANDO TESTES DE CLASSIFICAÇÃO ===\n")
 
     # CENÁRIO A: Dispensa que formaliza contrato
@@ -33,7 +33,7 @@ def run_tests():
     }
     scraper._extract_contract_info(text_a, data_a)
     scraper._classify_document(text_a, data_a)
-    
+
     print(f"  -> Tipo: {data_a['tipo_doc']} (Esperado: CONTRATO)")
     print(f"  -> Número: {data_a['num_contrato']} (Esperado: 027/2026)")
     assert data_a['tipo_doc'] == 'CONTRATO'
@@ -94,12 +94,12 @@ def run_tests():
     scraper._extract_contract_info(text_f, data_f)
     scraper._classify_document(text_f, data_f)
     scraper._extract_dates(text_f, data_f)
-    
+
     print(f"  -> Tipo: {data_f['tipo_doc']} (Esperado: ACORDO_COOPERACAO ou PARCERIA)")
     print(f"  -> Termo: {data_f['num_contrato']} (Esperado: 013/25)")
     print(f"  -> Início: {data_f['validade_inicio']} (Esperado: 17/11/2025)")
     print(f"  -> Fim: {data_f['validade_fim']} (Esperado: 17/11/2030)")
-    
+
     assert data_f['tipo_doc'] in ['ACORDO_COOPERACAO', 'PARCERIA']
     assert '013/25' in data_f['num_contrato']
     assert data_f['validade_inicio'] == '17/11/2025'
@@ -120,17 +120,17 @@ def run_tests():
     CNPJ nº 64.916.265/0001-17. Data da Assinatura: 05/05/2026. Vigência: 10/05/2026 a 03/10/2026.
     """
     data_g = {"modality": "-", "sintese": text_g, "num_contrato": "PUBLICACAO Acordo de Cooperação 001/26", "tipo_doc": "OUTRO", "contractor": "atos do Chamamento Público nº 01/2021 e AUTORIZO a celebração do Acordo de Cooperação nº 001/2026 com a FUNDACION MAPFRE", "doc_fiscal": "-", "explicit_object": "CELEBRAÇÃO DE ACORDO DE COOPERAÇÃO PARA A REALIZAÇÃO DE ATIVIDADES DE EDUCAÇÃO PARA O TRÂNSITO"}
-    
+
     # Simula extração estruturada
     scraper._extract_contractor(text_g, data_g)
     data_g['explicit_object'] = re.sub(r'(?i)^(?:CELEBRA[ÇC][ÃA]O\s+DE\s+ACORDO\s+DE\s+COOPERA[ÇC][ÃA]O\s+PARA\s+(?:A\s+)?|OBJETO:\s*)', '', data_g['explicit_object']).strip()
-    
+
     scraper._extract_contract_info(text_g, data_g)
     scraper._classify_document(text_g, data_g)
     scraper._extract_dates(text_g, data_g)
-    
+
     obj_text = data_g.get('explicit_object', '')
-    
+
     print(f"  -> Tipo: {data_g['tipo_doc']} (Esperado: ACORDO_COOPERACAO)")
     print(f"  -> Termo: {data_g['num_contrato']} (Esperado: Acordo de Cooperação 001/26)")
     print(f"  -> Organização: {data_g['contractor']} (Esperado: FUNDACION MAPFRE)")
@@ -138,7 +138,7 @@ def run_tests():
     print(f"  -> Objeto: {obj_text} (Esperado: REALIZAÇÃO DE ATIVIDADES DE EDUCAÇÃO PARA O TRÂNSITO)")
     print(f"  -> Início: {data_g.get('validity_start', '')} (Esperado: 10/05/2026)")
     print(f"  -> Fim: {data_g.get('validity_end', '')} (Esperado: 03/10/2026)")
-    
+
     assert data_g['tipo_doc'] == 'ACORDO_COOPERACAO'
     assert '001/26' in data_g['num_contrato']
     assert 'MAPFRE' in data_g['contractor']
@@ -210,18 +210,18 @@ def run_tests():
         doc_type="ACORDO_COOPERACAO",
         data_assinatura="05/05/2026"
     )
-    
+
     html_output = formatter.formatar_html([item_k])
-    
+
     print("  -> Verificando presenca do cabecalho...")
     assert "RESULTADOS - DIÁRIO OFICIAL" in html_output or "RESULTADOS - DI" in html_output
-    
+
     print("  -> Verificando presença de campos obrigatórios...")
     assert "Número do Termo" in html_output
     assert "Nome da Organização" in html_output
     assert "Data da Assinatura" in html_output
     assert "Vigência" in html_output
-    
+
     print("  -> Verificando ausência de campos proibidos...")
     assert "Número da Publicação" not in html_output
     assert "Documento" not in html_output
@@ -234,71 +234,218 @@ def run_tests():
 def test_term_matching():
     print("\n=== INICIANDO TESTES DE CORRESPONDENCIA DE TERMOS FLEXIVEL ===")
     from scraper_service import _normalize_text, _match_term
-    
+
     # 1. "Acordo de Cooperação" encontra "ACORDOS DE COOPERAÇÃO"
     matched, pattern = _match_term("Acordo de Cooperação", "EXTRATO DE ACORDOS DE COOPERAÇÃO")
     print(f"  -> Acordo de Cooperação encontra ACORDOS DE COOPERAÇÃO: {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "cooperacao"
-    
+
     # 2. "Acordo de Cooperação" encontra "Termo de Cooperação"
     matched, pattern = _match_term("Acordo de Cooperação", "Termo de Cooperação n° 002/2026")
     print(f"  -> Acordo de Cooperação encontra Termo de Cooperação: {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "cooperacao"
-    
+
     # 3. "Acordo de Cooperação" encontra texto com "cooperação" acentuado
     matched, pattern = _match_term("Acordo de Cooperação", "publicacao sobre cooperação tecnica")
     print(f"  -> Acordo de Cooperação encontra cooperação: {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "cooperacao"
-    
+
     # 4. "Pregão" encontra "PREGÃO ELETRÔNICO"
     matched, pattern = _match_term("Pregão", "PREGÃO ELETRÔNICO N° 006/2025")
     print(f"  -> Pregão encontra PREGÃO ELETRÔNICO: {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "pregao"
-    
+
     # 5. "Pregão" não deve depender de "licitação" nesta primeira versão
     matched, pattern = _match_term("Pregão", "AVISO DE LICITAÇÃO CONCORRÊNCIA N° 01/2026")
     print(f"  -> Pregão NÃO encontra AVISO DE LICITAÇÃO (sem a palavra pregao): {matched} (padrao: {pattern})")
     assert not matched
     assert pattern is None
-    
+
     # 6. "Aditamento" encontra "Aditivo"
     matched, pattern = _match_term("Aditamento", "Termo aditivo ao contrato")
     print(f"  -> Aditamento encontra Aditivo: {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "aditivo"
-    
+
     # 7. "Aditamento" encontra "Apostilamento"
     matched, pattern = _match_term("Aditamento", "Termo de Apostilamento n° 01")
     print(f"  -> Aditamento encontra Apostilamento: {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "apostilamento"
-    
+
     # 8. Termo desconhecido usa fallback pelo termo normalizado
     matched, pattern = _match_term("Nota de Empenho", "empenho de recursos")
     print(f"  -> Nota de Empenho encontra empenho: {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "empenho"
-    
+
     matched, pattern = _match_term("Chamamento", "Chamamento público para parcerias")
     print(f"  -> Chamamento encontra Chamamento (fallback): {matched} (padrao: {pattern})")
     assert matched
     assert pattern == "chamamento"
-    
+
     matched, pattern = _match_term("Termo Desconhecido", "Outro texto qualquer")
     print(f"  -> Termo Desconhecido não encontra texto qualquer: {matched} (padrao: {pattern})")
     assert not matched
     assert pattern is None
-    
+
     print("\n=== TESTES DE CORRESPONDENCIA FLEXIVEL PASSARAM COM SUCESSO! ===")
 
+def test_improvements_and_regressions():
+    print("\n=== INICIANDO TESTES DE NOVAS FUNCIONALIDADES E REGRESSOES ===")
+    from scraper_service import _parse_date_by_extenso, DiarioScraper
+
+    scraper = DiarioScraper()
+
+    # 1. data por extenso válida
+    assert _parse_date_by_extenso("28 de maio de 2026") == "28/05/2026"
+
+    # 2. data por extenso em caixa alta
+    assert _parse_date_by_extenso("28 DE MAIO DE 2026") == "28/05/2026"
+
+    # 3. data inválida
+    assert _parse_date_by_extenso("31 de fevereiro de 2026") is None
+    assert _parse_date_by_extenso("") is None
+    assert _parse_date_by_extenso("texto inválido") is None
+
+    # 4. parceiro com vírgulas
+    text_partner_commas = "AUTORIZO a celebração do Acordo de Cooperação com a RDA IMPORTAÇÃO, EXPORTAÇÃO E SERVIÇOS S.A, CNPJ nº 12.647.827/0001-70"
+    data = {"contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_partner_commas, data)
+    assert data["contractor"] == "RDA IMPORTAÇÃO, EXPORTAÇÃO E SERVIÇOS S.A"
+
+    # 5. parceiro terminado em S.A.
+    text_partner_dot = "AUTORIZO a celebração do Acordo de Cooperação com a RDA IMPORTAÇÃO, EXPORTAÇÃO E SERVIÇOS S.A., CNPJ nº 12.647.827/0001-70"
+    data = {"contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_partner_dot, data)
+    assert data["contractor"] == "RDA IMPORTAÇÃO, EXPORTAÇÃO E SERVIÇOS S.A."
+
+    # 6. remoção do prefixo “empresa”
+    text_prefix_empresa = "celebrado com a empresa KEETA DELIVERY BRAZIL LTDA, CNPJ nº 61.086.275/0001-84"
+    data = {"contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_prefix_empresa, data)
+    assert data["contractor"] == "KEETA DELIVERY BRAZIL LTDA"
+
+    # 7. preservação de palavra legítima no meio do nome
+    text_legitimate_word = "celebrado com a EMPRESA DE NAVEGAÇÃO S.A., CNPJ nº 00.000.000/0001-00"
+    data = {"contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_legitimate_word, data)
+    assert data["contractor"] == "EMPRESA DE NAVEGAÇÃO S.A."
+
+    # 8. aditamento sem número
+    text_adit_no_num = "Formalização do Aditamento do Contrato nº 25/25, celebrado com a empresa PORTO SEGURO"
+    data = {"tipo_doc": "OUTRO", "num_aditamento": "", "contrato_pai": "", "num_contrato": "-"}
+    scraper._extract_contract_info(text_adit_no_num, data)
+    assert data["tipo_doc"] == "ADITAMENTO"
+    assert data["num_aditamento"] == ""
+    assert data["contrato_pai"] == "25/25"
+
+    # 9. aditamento sem número com contrato pai estruturado
+    text_adit_structured = "Formalização do Aditamento do Contrato, celebrado com a empresa PORTO SEGURO"
+    data = {"tipo_doc": "OUTRO", "num_aditamento": "", "contrato_pai": "", "num_contrato": "25/25"}
+    scraper._extract_contract_info(text_adit_structured, data)
+    assert data["tipo_doc"] == "ADITAMENTO"
+    assert data["contrato_pai"] == "25/25"
+
+    # 10. garantia de que contrato pai não vira número do aditamento
+    assert data["num_aditamento"] == ""
+
+    # 11. vigência conforme Plano de Trabalho
+    text_plano_trabalho = "com prazo de vigência iniciando na data de sua assinatura e possuindo término no mês subsequente ao último prazo previsto no Plano de Trabalho"
+    data = {"validity_start": "-", "validity_end": "-", "prazo": "", "tipo_prazo": ""}
+    scraper._extract_dates(text_plano_trabalho, data)
+    assert data["validity_end"] == "Conforme Plano de Trabalho"
+
+    # 12. data explícita prevalecendo sobre Plano de Trabalho
+    text_explicit_date_pt = "compreendidos entre 10/05/2026 e 03/10/2026 nos termos do Plano de Trabalho"
+    data = {"validity_start": "-", "validity_end": "-", "prazo": "", "tipo_prazo": ""}
+    scraper._extract_dates(text_explicit_date_pt, data)
+    assert data["validity_end"] == "03/10/2026"
+
+    # 13. data de assinatura explícita prevalecendo sobre data genérica do município
+    text_signature_precedence = "Data da Assinatura: 15/05/2026 ... São Paulo, 08 de junho de 2026."
+    data = {"data_assinatura": "-", "validity_start": "-", "validity_end": "-"}
+    scraper._extract_dates(text_signature_precedence, data)
+    assert data["data_assinatura"] == "15/05/2026"
+
+    # --- NOVOS CASOS DE VIGÊNCIA INICIAL ---
+    # A) Assinatura sem início de vigência explícito: validity_start deve ficar "-"
+    text_sig_no_start = "Data da Assinatura: 15/05/2026. Objeto: Aquisição de licenças."
+    data_sig_no_start = {"data_assinatura": "-", "validity_start": "-", "validity_end": "-"}
+    scraper._extract_dates(text_sig_no_start, data_sig_no_start)
+    assert data_sig_no_start["data_assinatura"] == "15/05/2026"
+    assert data_sig_no_start["validity_start"] == "-"
+
+    # B) "Vigência a partir da assinatura": validity_start deve herdar a data da assinatura
+    text_sig_start = "Data da Assinatura: 15/05/2026. Prazo de vigência a partir de sua assinatura."
+    data_sig_start = {"data_assinatura": "-", "validity_start": "-", "validity_end": "-"}
+    scraper._extract_dates(text_sig_start, data_sig_start)
+    assert data_sig_start["data_assinatura"] == "15/05/2026"
+    assert data_sig_start["validity_start"] == "15/05/2026"
+
+    # C) Intervalo explícito: início e fim extraídos do intervalo
+    text_interval = "vigência compreendida entre 10/05/2026 e 03/10/2026"
+    data_interval = {"data_assinatura": "-", "validity_start": "-", "validity_end": "-"}
+    scraper._extract_dates(text_interval, data_interval)
+    assert data_interval["validity_start"] == "10/05/2026"
+    assert data_interval["validity_end"] == "03/10/2026"
+
+    # --- VALIDAÇÕES DE CASOS REAIS ---
+
+    # Caso Real: Porto Seguro
+    text_porto = "EXPEDIENTE Nº 64/25 - Formalização do Aditamento do Contrato nº 25/25, celebrado com a empresa PORTO SEGURO COMPANHIA DE SEGUROS GERAIS., inscrita no CNPJ sob o nº 61.198.164/0001-60, referente a prestação de serviços SECURITÁRIOS MULTIRRISCOS PATRIMONIAIS DE MÓVEIS, IMÓVEIS E UTENSÍLIOS, para prorrogar o Contrato nº 25/25, por 12 (doze) meses, compreendidos entre 16.05.2026 e 16.05.2027... nos termos do disposto na Lei Federal nº 13.303/16. Formalizado em 15/05/2026."
+    data_porto = {"tipo_doc": "OUTRO", "num_aditamento": "", "contrato_pai": "", "num_contrato": "25/25", "contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_porto, data_porto)
+    scraper._extract_contract_info(text_porto, data_porto)
+    scraper._extract_dates(text_porto, data_porto)
+
+    assert data_porto["tipo_doc"] == "ADITAMENTO"
+    assert data_porto["num_aditamento"] == ""
+    assert data_porto["contrato_pai"] == "25/25"
+    assert data_porto["contractor"] == "PORTO SEGURO COMPANHIA DE SEGUROS GERAIS."
+    assert data_porto["data_assinatura"] == "15/05/2026"
+
+    # Caso Real: Shimano
+    text_shimano = "AUTORIZO a celebração do Acordo de Cooperação nº 004/2026 com a SHIMANO LATIN AMERICA REPRESENTACAO COMERCIAL LTDA, CNPJ nº 08.723.406/0001-04, para a realização de Campanhas educativas e publicitárias para o trânsito... com prazo de vigência iniciando na data de sua assinatura e possuindo término no mês subsequente ao último prazo previsto no Plano de Trabalho... Formalizado em 28/05/2026."
+    data_shimano = {"tipo_doc": "OUTRO", "num_aditamento": "", "contrato_pai": "", "num_contrato": "-", "contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_shimano, data_shimano)
+    scraper._extract_contract_info(text_shimano, data_shimano)
+    scraper._extract_dates(text_shimano, data_shimano)
+
+    assert data_shimano["contractor"] == "SHIMANO LATIN AMERICA REPRESENTACAO COMERCIAL LTDA"
+    assert data_shimano["data_assinatura"] == "28/05/2026"
+    assert data_shimano["validity_end"] == "Conforme Plano de Trabalho"
+
+    # Caso Real: Keeta
+    text_keeta = "AUTORIZO a celebração do Acordo de Cooperação nº 002/2026 com a empresa KEETA DELIVERY BRAZIL LTDA, CNPJ nº 61.086.275/0001-84, para a realização de Campanhas... com prazo de vigência iniciando na data de sua assinatura... Formalizado em 29/05/2026."
+    data_keeta = {"tipo_doc": "OUTRO", "num_aditamento": "", "contrato_pai": "", "num_contrato": "-", "contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_keeta, data_keeta)
+    scraper._extract_dates(text_keeta, data_keeta)
+
+    assert data_keeta["contractor"] == "KEETA DELIVERY BRAZIL LTDA"
+    assert data_keeta["data_assinatura"] == "29/05/2026"
+
+    # Caso Real: RDA
+    text_rda = "AUTORIZO a celebração do Acordo de Cooperação nº 005/2026 com a empresa RDA IMPORTAÇÃO, EXPORTAÇÃO E SERVIÇOS S.A, CNPJ nº 12.647.827/0001-70, para a realização de... com prazo de vigência iniciando na data de sua assinatura... Formalizado em 28/05/2026."
+    data_rda = {"tipo_doc": "OUTRO", "num_aditamento": "", "contrato_pai": "", "num_contrato": "-", "contractor": "-", "doc_fiscal": "-"}
+    scraper._extract_contractor(text_rda, data_rda)
+    scraper._extract_dates(text_rda, data_rda)
+
+    assert data_rda["contractor"] == "RDA IMPORTAÇÃO, EXPORTAÇÃO E SERVIÇOS S.A"
+    assert data_rda["data_assinatura"] == "28/05/2026"
+
+    print("=== TODOS OS TESTES DE NOVAS FUNCIONALIDADES E REGRESSOES PASSARAM COM SUCESSO! ===")
+
 if __name__ == "__main__":
+    import sys
     try:
-        run_tests()
+        test_classification_scenarios()
         test_term_matching()
+        test_improvements_and_regressions()
     except Exception as e:
         print(f"\n❌ ERRO NOS TESTES: {e}")
         sys.exit(1)

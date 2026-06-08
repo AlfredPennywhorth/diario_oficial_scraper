@@ -375,6 +375,8 @@ function renderGrid(results) {
             const orgaoCompleto = `${item.contractor || '-'}${docFiscal ? ', ' + docFiscal : ''}`;
             const vigInicio = item.validity_start || '-';
             const vigFim = item.validity_end || '-';
+            const rawTermo = item.contract_number || item.num_contrato || item.publication_number || '';
+            const normalizedTermo = rawTermo || '—';
 
             card.innerHTML = `
                 <div class="card-header">
@@ -555,7 +557,7 @@ function exportCSV() {
 }
 
 function normalizarTermo(termo) {
-    if (!termo) return "S/N";
+    if (!termo) return "—";
     let t = termo;
     t = t.replace(/PUBLICACAO/gi, "");
     t = t.replace(/nº/gi, "");
@@ -563,7 +565,7 @@ function normalizarTermo(termo) {
     t = t.replace(/N°/gi, "");
     t = t.replace(/n°/gi, "");
     t = t.replace(/\s+/g, " ").trim();
-    return t || "S/N";
+    return t || "—";
 }
 
 function renderTextView(results) {
@@ -633,8 +635,8 @@ function renderTextView(results) {
 
             html += `<p><strong>• Processo SEI: </strong> <a href="${item.link_html}" target="_blank" style="color:#2563eb;text-decoration:none">${item.process_number || '-'}</a></p>`;
 
-            const numAdit = item.amendment_number || "S/N";
-            const numPai = item.parent_contract || "S/N";
+            const numAdit = item.amendment_number || "—";
+            const numPai = item.parent_contract || "—";
             html += `<p>
                  <strong>${labelTipo} nº </strong> <a href="${item.link_pdf}" target="_blank" style="color:#2563eb;text-decoration:none">${numAdit}</a> 
                  <strong>ao Contrato nº </strong> ${numPai}
@@ -659,7 +661,7 @@ function renderTextView(results) {
         else if (tipo === 'PARCERIA') {
             html += `<p><strong>• Processo SEI: </strong> <a href="${item.link_html}" target="_blank" style="color:#2563eb;text-decoration:none">${item.process_number || '-'}</a></p>`;
 
-            const numInst = item.contract_number || "S/N";
+            const numInst = item.contract_number || "—";
             html += `<p>
                  <strong>Instrumento nº </strong> <a href="${item.link_pdf}" target="_blank" style="color:#2563eb;text-decoration:none">${numInst}</a>
              </p>`;
@@ -692,7 +694,7 @@ function renderTextView(results) {
 
             html += `<p><strong>• Processo SEI: </strong> <a href="${item.link_html}" target="_blank" style="color:#2563eb;text-decoration:none">${item.process_number || '-'}</a></p>`;
 
-            const numCont = item.contract_number && item.contract_number !== '-' ? item.contract_number : "S/N";
+            const numCont = item.contract_number && item.contract_number !== '-' ? item.contract_number : "—";
             const docFiscal = formatarDocFiscal(item.company_doc);
             html += `<p>
                 <strong>${labelInst} nº </strong> <a href="${item.link_pdf}" target="_blank" style="color:#2563eb;text-decoration:none">${numCont}</a> - ${item.contractor}${docFiscal ? ' , ' + docFiscal : ''}
@@ -719,7 +721,7 @@ function renderTextView(results) {
 
             html += P("Número do Processo:", item.process_number || '-');
 
-            const pubNum = item.contract_number && item.contract_number.length > 2 ? item.contract_number : "S/N";
+            const pubNum = item.contract_number && item.contract_number.length > 2 ? item.contract_number : "—";
             const pubLabel = (modality && modality !== '-' ? modality : "PUBLICACAO");
             html += `<p>
                 <strong>Número da Publicação: </strong> 

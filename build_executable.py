@@ -41,9 +41,15 @@ for folder in ['build', 'dist']:
                     print(f"   [ERRO] Falha ao remover {folder}. Feche programas que possam estar usando a pasta.")
                     sys.exit(1)
 
-# 2. Executar PyInstaller
 print("\n2. Compilando com PyInstaller...")
-result = subprocess.run(['pyinstaller', 'scraper.spec'], capture_output=True, text=True)
+pyinstaller_bin = 'pyinstaller'
+venv_pyinstaller = os.path.join('venv', 'Scripts', 'pyinstaller.exe')
+if os.path.exists(venv_pyinstaller):
+    pyinstaller_bin = venv_pyinstaller
+elif os.path.exists(os.path.join('venv', 'Scripts', 'pyinstaller')):
+    pyinstaller_bin = os.path.join('venv', 'Scripts', 'pyinstaller')
+
+result = subprocess.run([pyinstaller_bin, 'scraper.spec'], capture_output=True, text=True)
 if result.returncode != 0:
     print("   [ERRO] ERRO ao compilar!")
     print(result.stderr)
