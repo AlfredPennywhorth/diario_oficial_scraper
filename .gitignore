@@ -57,3 +57,5 @@ server_error.log
 .env
 venv/
 env/
+
+.agent/
