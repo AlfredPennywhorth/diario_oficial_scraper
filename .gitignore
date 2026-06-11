@@ -56,6 +56,7 @@ server_error.log
 # Environment
 .env
 venv/
+venv_build_312/
 env/
 
 .agent/

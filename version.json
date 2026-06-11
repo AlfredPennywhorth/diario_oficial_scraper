@@ -1,14 +1,14 @@
 {
-  "version": "1.5.3",
+  "version": "1.5.4",
   "release_date": "2026-06-09",
-  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.3/DiarioScraper-v1.5.3.zip",
+  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.4/DiarioScraper-v1.5.4.zip",
   "changelog": [
-    "Sistema de Auto-Atualização em 1 clique adicionado à barra de notificação (com limpeza de resíduos e reinício automático)",
-    "Design visual refinado baseado no Impeccable (visual limpo, OKLCH, Space Grotesk + Instrument Sans)",
-    "Máscara oficial do CNPJ/CPF aplicada automaticamente com formatação padronizada",
-    "Valor por extenso em português adicionado ao campo de Valor no Texto de Email",
-    "Proteção contra duplicidade de valor por extenso em execuções com IA ativa",
-    "Correção do título de cabeçalho na visualização de email (removendo MAPFRE FIX)"
+    "auto-update robusto no Windows",
+    "isolamento das variáveis herdadas do PyInstaller",
+    "captura correta dos números de aditamentos",
+    "correção da data de assinatura da SIMPRESS",
+    "correção do valor do aditamento da SIMPRESS",
+    "preservação de aditamentos sem número"
   ],
   "critical": false
 }
