@@ -244,6 +244,7 @@ class DiarioScraper:
         # Fallback genérico se ainda não foi extraído
         if data.get('contractor') in ["-", "", None]:
              patterns = [
+                 r'(?i)(?:celebrado\s+(?:entre\s+a\s+CET\s+e\s+a\s+|com\s+a\s+)?empresa|contratada)\s+([A-ZÇÃÕÁÉÍÓÚ\s\.,&LTDA\-]+?)(?=\s*(?:\.|\bFormalizado em\b|\bCNPJ\b|\bCPF\b|$))',
                  r'(?:Vencedor(?:es)?|Adjudicado para|Empresa|Contratada|Partícipe)\s*[:\.-]?\s*([A-ZÇÃÕÁÉÍÓÚ\s\.,&LTDA\-]+?)(?:,?\s*CNPJ|CPF|$)',
                  r'Empresa\s+([A-ZÇÃÕÁÉÍÓÚ\s\.,&LTDA\-]+?)\s+,',
                  r'([^.\n:;]{5,120}?)(?:,?\s*CNPJ|CPF)'
@@ -304,81 +305,124 @@ class DiarioScraper:
                  ano = ano[2:]
              data['num_contrato'] = f"Acordo de Cooperação {m_acordo.group(2)}/{ano}"
 
-        # 4. Busca por Aditamentos / Apostilamentos (Melhorado tornando o número opcional)
-        m_adit = re.search(r'(?:Termo de |Extrato de |Termo )?(Aditamento|Apostilamento|Aditivo)(?:\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?))?', text, re.IGNORECASE)
+        # 4. Busca por Aditamentos / Apostilamentos / Aditivos
+        # FASE 1: Procurar Aditamento/Aditivo/Apostilamento Numerado
+        # Regex principal (com indicador de número como Nº, N°, N., No, N)
+        pat_num = r'(?i)\b(aditamento|aditivo|apostilamento)s?\b\s*(?:d[oa]s?\s+|de\s+)?(?:n[º°ºo\.]+|no|n\.º|n\.o|n)\s*([\d\.]+(?:/[\d]{2,4})?)'
+        match_num = re.search(pat_num, text)
 
-        if m_adit and m_adit.group(1):
-            tipo_encontrado = m_adit.group(1).upper()
+        # Regex secundária (sem indicador de número, mas exige formato com barra para segurança)
+        if not match_num:
+            pat_num_no_ind = r'(?i)\b(aditamento|aditivo|apostilamento)s?\b\s*(?:d[oa]s?\s+|de\s+)?([\d\.]+(?:/[\d]{2,4})?)'
+            m_cand = re.search(pat_num_no_ind, text)
+            if m_cand and '/' in m_cand.group(2):
+                match_num = m_cand
+
+        if match_num:
+            tipo_encontrado = match_num.group(1).upper()
             data['tipo_doc'] = 'ADITAMENTO' if tipo_encontrado in ['ADITAMENTO', 'ADITIVO'] else 'APOSTILAMENTO'
-            data['num_aditamento'] = m_adit.group(2) if m_adit.group(2) else ""
+            data['num_aditamento'] = match_num.group(2)
+        else:
+            # FASE 2: Fallback sem número
+            if re.search(r'(?i)\b(?:aditamento|aditivo)\b', text):
+                data['tipo_doc'] = 'ADITAMENTO'
+                data['num_aditamento'] = ""
+            elif re.search(r'(?i)\b(?:apostilamento)\b', text):
+                data['tipo_doc'] = 'APOSTILAMENTO'
+                data['num_aditamento'] = ""
 
-            # Identificação do Contrato Pai (Original)
-            m_pai = re.search(r'(?:ao |do )(?:Termo de )?(?:Contrato|Termo de Colaboração|Termo de Fomento|Ajuste)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
-            if m_pai:
-                data['contrato_pai'] = m_pai.group(1)
-        elif re.search(r'\b(?:Aditamento|Aditivo)\b', text, re.IGNORECASE):
-            data['tipo_doc'] = 'ADITAMENTO'
-            data['num_aditamento'] = ""
-            m_pai = re.search(r'(?:ao |do )(?:Termo de )?(?:Contrato|Termo de Colaboração|Termo de Fomento|Ajuste)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
-            if m_pai:
-                data['contrato_pai'] = m_pai.group(1)
-        elif re.search(r'\b(?:Apostilamento)\b', text, re.IGNORECASE):
-            data['tipo_doc'] = 'APOSTILAMENTO'
-            data['num_aditamento'] = ""
-            m_pai = re.search(r'(?:ao |do )(?:Termo de )?(?:Contrato|Termo de Colaboração|Termo de Fomento|Ajuste)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
-            if m_pai:
-                data['contrato_pai'] = m_pai.group(1)
-
-        # Fallback do num_contrato estruturado para contrato_pai em Aditamentos/Apostilamentos
+        # Identificação do Contrato Pai (Original) para Aditamentos/Apostilamentos
         if data.get('tipo_doc') in ['ADITAMENTO', 'APOSTILAMENTO']:
+            m_pai = re.search(r'(?:ao |do )(?:Termo de )?(?:Contrato|Termo de Colaboração|Termo de Fomento|Ajuste)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+            if m_pai:
+                data['contrato_pai'] = m_pai.group(1)
+
+            # Fallback do num_contrato estruturado para contrato_pai
             if not data.get('contrato_pai') or data.get('contrato_pai') == "-":
                 structured_num = data.get('num_contrato')
                 if structured_num and structured_num != "-":
                     data['contrato_pai'] = structured_num
 
     def _extract_values(self, text, data):
-        if data.get('valor') in ["-", "", None] or len(data.get('valor','')) < 10:
-             if re.search(r'(sem impacto|sem ônus|sem o acréscimo)', text, re.IGNORECASE):
+        # Limpar o valor estruturado se ele não for informativo (ex: '-' ou vazio)
+        struct_val = data.get('valor', '-')
+        if struct_val in ["-", "", None]:
+            struct_val = "-"
+
+        val_extracted = ""
+
+        # Tentar extrair valor com termo chave + extenso (ex: acréscimo, valor total)
+        pat_chave_ext = r'(?i)(?:acréscimo|acrescendo|acrescido|valor\s+total|valor\s+d[oa]\s+aditamento|valor\s+da\s+prorrogação|importe|valor\s+contratual).*?(?:R\$\s?)\s*([\d\.,]+\s*\([^\)]+\))'
+        m_ch_ext = re.search(pat_chave_ext, text)
+        if m_ch_ext:
+            val_extracted = m_ch_ext.group(1).strip()
+
+        # Tentar extrair valor com termo chave sem extenso
+        if not val_extracted:
+            pat_chave = r'(?i)(?:acréscimo|acrescendo|acrescido|valor\s+total|valor\s+d[oa]\s+aditamento|valor\s+da\s+prorrogação|importe|valor\s+contratual).*?(?:R\$\s?)\s*([\d\.,]+)'
+            m_ch = re.search(pat_chave, text)
+            if m_ch:
+                val_extracted = f"R$ {m_ch.group(1).strip()}"
+
+        # Tentar extrair qualquer valor monetário com extenso
+        if not val_extracted:
+            m_val_ext = re.search(r'(?i)(?:R\$\s?|Valor:?\s*)([\d\.,]+\s*\([^\)]+\))', text)
+            if m_val_ext:
+                val_extracted = m_val_ext.group(1).strip()
+
+        # Tentar extrair qualquer valor monetário numérico simples
+        if not val_extracted:
+            m_val = re.search(r'(?i)(?:R\$\s?|Valor:?\s*)([\d\.,]+)', text)
+            if m_val:
+                val_extracted = f"R$ {m_val.group(1).strip()}"
+
+        # Se extraímos um valor do texto, ele tem prioridade sobre "Sem impacto"
+        if val_extracted:
+            data['valor'] = val_extracted
+        else:
+            # Caso contrário, verifica se é sem impacto/sem ônus
+            if re.search(r'(sem impacto|sem ônus|sem o acréscimo|sem alteração de valor|não acarreta ônus)', text, re.IGNORECASE):
                 data['valor'] = "Sem impacto"
-             else:
-                m_val_ext = re.search(r'(?:R\$\s?|Valor:?\s*)([\d\.,]+\s*\([^\)]+\))', text, re.IGNORECASE)
-                if m_val_ext:
-                    data['valor'] = m_val_ext.group(1)
-                else:
-                    m_val = re.search(r'(?:R\$\s?|Valor:?\s*)([\d\.,]+)', text)
-                    if m_val: data['valor'] = m_val.group(1)
+            else:
+                # Mantém o estruturado se houver, senão '-'
+                data['valor'] = struct_val if struct_val != "-" else "Sem impacto"
 
     def _extract_dates(self, text, data):
-        validade_inicio = ""
-
         def normalize_date(d):
             if not d: return ""
             return d.replace('.', '/')
 
-        # Tentar 1: Data da assinatura
-        m_dt = re.search(r'Data\s+da\s+Assinatura:?\s*(\d{2}[/.]\d{2}[/.]\d{4})', text, re.IGNORECASE)
-        if m_dt:
-            validade_inicio = normalize_date(m_dt.group(1))
+        # Regra de precedência para data de assinatura:
+        # 1. Campo estruturado "Data da Assinatura"
+        validade_inicio = ""
+        if data.get('data_assinatura') and data.get('data_assinatura') != "-":
+            validade_inicio = normalize_date(data['data_assinatura'])
 
-        # Tentar 2: Assinado em
+        # 2. Etiqueta textual explícita "Data da Assinatura"
         if not validade_inicio:
-            m_ass = re.search(r'Assinado\s+em\s*(\d{2}[/.]\d{2}[/.]\d{4})', text, re.IGNORECASE)
-            if m_ass:
-                validade_inicio = normalize_date(m_ass.group(1))
+            m_dt = re.search(r'Data\s+da\s+Assinatura:?\s*(\d{2}[/.]\d{2}[/.]\d{4})', text, re.IGNORECASE)
+            if m_dt:
+                validade_inicio = normalize_date(m_dt.group(1))
 
-        # Tentar 3: Formalizado em
+        # 3. "Formalizado em"
         if not validade_inicio:
             m_form = re.search(r'Formalizado\s+em\s*(\d{2}[/.]\d{2}[/.]\d{4})', text, re.IGNORECASE)
             if m_form:
                 validade_inicio = normalize_date(m_form.group(1))
 
-        # Tentar 4: Celebrado em
+        # 4. "Assinado em"
+        if not validade_inicio:
+            m_ass = re.search(r'Assinado\s+em\s*(\d{2}[/.]\d{2}[/.]\d{4})', text, re.IGNORECASE)
+            if m_ass:
+                validade_inicio = normalize_date(m_ass.group(1))
+
+        # 5. "Celebrado em"
         if not validade_inicio:
             m_cel = re.search(r'Celebrado\s+em\s*(\d{2}[/.]\d{2}[/.]\d{4})', text, re.IGNORECASE)
             if m_cel:
                 validade_inicio = normalize_date(m_cel.group(1))
 
-        # Tentar 5: Data por extenso em linha final, somente como último fallback
+        # 6. Demais fallbacks: data por extenso em linha final
         if not validade_inicio:
             final_part = text[-300:]
             m_ext = re.search(r'Sã?o\s+Paulo\s*,\s*(\d{1,2})\s+de\s+([a-zçãõáéíóúâêîôû]+)\s+de\s+(\d{4})', final_part, re.IGNORECASE)
@@ -607,11 +651,18 @@ class DiarioScraper:
         txt = re.sub(r'\s+', ' ', text)
 
         # 0. Priority: Aditamento specific smart capture (Prorrogação)
-        if "PRORROG" in txt.upper() or "ADITAMENTO" in txt.upper():
-             m_prorrog = re.search(r'(?:fica|para)\s+prorrogad[oa].*?(?:meses|dias|anos|vigência)', txt, re.IGNORECASE)
+        if "PRORROG" in txt.upper() or "ADITAMENTO" in txt.upper() or "ADITIVO" in txt.upper():
+             m_prorrog = re.search(r'(?i)\b(prorroga[çc][ãa]o|prorrogar|prorrogad[oa])\b.*?(?:meses|dias|anos|vig[êe]ncia|\d{2}/\d{2}/\d{4})', txt)
+             if not m_prorrog:
+                 m_prorrog = re.search(r'(?i)\b(aditamento|aditivo)\b.*?(?:meses|dias|anos|vig[êe]ncia|\d{2}/\d{2}/\d{4})', txt)
+
              if m_prorrog:
-                 start, end = m_prorrog.span()
-                 sub = txt[start:end+20]
+                 start = m_prorrog.start()
+                 end = min(len(txt), start + 200)
+                 sub = txt[start:end]
+                 m_dot = re.search(r'\.(?!\d)', sub)
+                 if m_dot:
+                     sub = sub[:m_dot.start()]
                  return sub.strip('.,; ')
 
         # 1. Clean explicit OBJETO
