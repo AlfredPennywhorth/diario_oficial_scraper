@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect
+﻿from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Iniciando Diario Oficial Scraper...")
-    
+
     # Debug loop type
     loop = asyncio.get_running_loop()
     if sys.platform == 'win32' and not isinstance(loop, asyncio.ProactorEventLoop):
@@ -40,10 +40,10 @@ async def lifespan(app: FastAPI):
 
     # Inicializa o serviço de scraping (Camada Intermediária)
     app.state.service = ScraperService(debug=True)
-    
+
     # Verificar atualizações em background
     asyncio.create_task(check_updates_on_startup())
-    
+
     yield
     # Shutdown
     logger.info("Encerrando servidor...")
@@ -87,43 +87,55 @@ async def check_update():
         return {"available": False, "current_version": get_current_version(), "error": "Erro ao verificar atualizações"}
     return update_info.to_dict()
 
+def get_clean_env():
+    import os
+    env = os.environ.copy()
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        meipass = sys._MEIPASS
+        paths = env.get("PATH", "").split(os.pathsep)
+        cleaned_paths = [p for p in paths if meipass not in p]
+        env["PATH"] = os.pathsep.join(cleaned_paths)
+    env.pop("sys._MEIPASS", None)
+    env.pop("_MEIPASS", None)
+    return env
+
 @app.post("/api/start-update")
 async def start_update():
     import aiohttp
     import subprocess
     import zipfile
-    
+
     # 1. Determinar caminhos
     if getattr(sys, 'frozen', False):
         app_dir = os.path.dirname(sys.executable)
     else:
         app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        
+
     update_dir = os.path.join(app_dir, "update")
     os.makedirs(update_dir, exist_ok=True)
-    
+
     lock_path = os.path.join(update_dir, "update.lock")
     zip_path = os.path.join(update_dir, "update_temp.zip")
     ps_path = os.path.join(update_dir, "update_helper.ps1")
-    
+
     # 2. Verificar se já existe atualização em andamento
     if os.path.exists(lock_path):
         logger.warning("Tentativa de atualização rejeitada: arquivo lock já existe.")
         raise HTTPException(status_code=409, detail="Atualização já em andamento (travado por lock).")
-        
+
     try:
         # Criar o arquivo de lock
         with open(lock_path, "w", encoding="utf-8") as f:
             f.write(str(os.getpid()))
-            
+
         # 3. Consultar versão disponível
         update_info = await check_for_updates()
         if not update_info or not update_info.available or not update_info.download_url:
             raise HTTPException(status_code=400, detail="Nenhuma atualização disponível para download.")
-            
+
         url = update_info.download_url
         logger.info(f"Iniciando download da atualização de {url} para {zip_path}")
-        
+
         # 4. Baixar o ZIP da release
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
@@ -136,15 +148,15 @@ async def start_update():
                             break
                         f.write(chunk)
         logger.info("Download do ZIP concluído.")
-        
+
         # 5. Validar o ZIP baixado
         if not os.path.exists(zip_path):
             raise HTTPException(status_code=500, detail="Arquivo ZIP não foi salvo fisicamente.")
-            
+
         zip_size = os.path.getsize(zip_path)
         if zip_size < 500 * 1024: # Pelo menos 500KB
             raise HTTPException(status_code=400, detail=f"Arquivo ZIP baixado está incompleto ou corrompido (tamanho: {zip_size} bytes).")
-            
+
         try:
             with zipfile.ZipFile(zip_path, 'r') as z:
                 namelist = z.namelist()
@@ -154,7 +166,7 @@ async def start_update():
                     raise Exception("A estrutura interna do ZIP não contém o executável esperado ou backend/main.py.")
         except Exception as z_err:
             raise HTTPException(status_code=400, detail=f"ZIP inválido ou ilegível: {str(z_err)}")
-            
+
         # 6. Gerar update_helper.ps1
         app_dir_esc = app_dir.replace("\\", "/")
         ps_content = f"""# Script de Autoupdate para DiarioScraper
@@ -170,6 +182,11 @@ $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 # Garantir estrutura de logs e backups
 if (-not (Test-Path (Join-Path $AppDir "logs"))) {{ New-Item -ItemType Directory -Path (Join-Path $AppDir "logs") -Force }}
 if (-not (Test-Path (Join-Path $AppDir "backups"))) {{ New-Item -ItemType Directory -Path (Join-Path $AppDir "backups") -Force }}
+
+# Criar arquivo de log started imediatamente
+$StartedPath = Join-Path $AppDir "logs/update_helper_started_$Timestamp.log"
+New-Item -ItemType File -Path $StartedPath -Force -ErrorAction SilentlyContinue
+Add-Content -Path $StartedPath -Value "Update helper started at $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 
 $LogPath = Join-Path $AppDir "logs/update_$Timestamp.log"
 
@@ -316,26 +333,50 @@ Remove-Item $MyInvocation.MyCommand.Path -Force
 """
         with open(ps_path, "w", encoding="utf-8") as f:
             f.write(ps_content)
-            
-        # 7. Executar o PowerShell desacoplado
-        logger.info("Disparando update_helper.ps1 desacoplado...")
-        subprocess.Popen(
-            ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", ps_path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        )
-        
+
+        # 7. Executar o PowerShell desacoplado de forma robusta
+        system_root = os.environ.get("SystemRoot", "C:\\Windows")
+        powershell_path = os.path.join(system_root, "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+        if not os.path.exists(powershell_path):
+            logger.warning(f"PowerShell absoluto não encontrado em {powershell_path}. Usando fallback do PATH.")
+            powershell_path = "powershell.exe"
+
+        creationflags = 0
+        if sys.platform == "win32":
+            # CREATE_NEW_CONSOLE (0x00000010) cria um console independente que não morre com o pai
+            creationflags = subprocess.CREATE_NEW_CONSOLE
+
+        logger.info("Disparando update_helper.ps1 de forma desacoplada...")
+        logger.info(f"Comando: {powershell_path} -NoProfile -ExecutionPolicy Bypass -File {ps_path}")
+        logger.info(f"Caminho do script existe? {os.path.exists(ps_path)}")
+
+        try:
+            p = subprocess.Popen(
+                [powershell_path, "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File", ps_path],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creationflags,
+                close_fds=True,
+                cwd=app_dir,
+                env=get_clean_env()
+            )
+            logger.info(f"PowerShell disparado com sucesso. PID: {p.pid}")
+            if p.pid is None:
+                raise Exception("Falha ao obter o PID do processo PowerShell.")
+        except Exception as popen_err:
+            logger.error(f"Erro crítico ao disparar Popen do PowerShell: {popen_err}", exc_info=True)
+            raise popen_err
+
         # 8. Agendar desligamento
         async def shutdown():
             await asyncio.sleep(1.5) # Pequeno delay para garantir retorno do JSON
             logger.info("Encerrando aplicação para aplicar a atualização...")
             os._exit(0)
-            
+
         asyncio.create_task(shutdown())
-        
+
         return {"status": "success", "message": "Atualização iniciada. A aplicação será reiniciada em instantes."}
-        
+
     except Exception as e:
         logger.error(f"Erro ao processar atualização: {e}", exc_info=True)
         # Limpeza defensiva do lock e arquivos locais do servidor em caso de erro
@@ -348,10 +389,11 @@ Remove-Item $MyInvocation.MyCommand.Path -Force
         if os.path.exists(ps_path):
             try: os.remove(ps_path)
             except: pass
-            
+
         if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=f"Erro interno de atualização: {str(e)}")
+
 
 async def check_updates_on_startup():
     await asyncio.sleep(2)
@@ -391,13 +433,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     async def log_callback(msg):
                         await websocket.send_json({"type": "log", "message": msg})
-                    
+
                     results = await app.state.service.run(req, status_callback=log_callback)
                     response_data = [r.model_dump() if hasattr(r, 'model_dump') else r.dict() for r in results]
-                    
+
                     await websocket.send_json({"type": "result", "data": response_data})
                     await websocket.send_json({"type": "complete"})
-                    
+
             except WebSocketDisconnect:
                 break
             except Exception as e:
@@ -411,7 +453,7 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print(" INICIALIZANDO DIARIO OFICIAL SCRAPER")
     print("="*60)
-    
+
     try:
         if sys.platform == "win32":
             import asyncio
@@ -429,7 +471,7 @@ if __name__ == "__main__":
             url = "http://127.0.0.1:8085"
             print(f"[INFO] Abrindo navegador em {url} ...")
             webbrowser.open(url)
-        
+
         threading.Thread(target=open_browser, daemon=True).start()
         uvicorn.run(app, host="127.0.0.1", port=8085, reload=False, log_level="info")
     except Exception as e:
