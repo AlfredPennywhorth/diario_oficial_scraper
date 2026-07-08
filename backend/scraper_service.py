@@ -11,9 +11,101 @@ from models import SearchResult
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 import unicodedata
+from paths import get_logs_dir, get_partial_results_path
 
 # Configuração de Logs
 logger = logging.getLogger(__name__)
+
+
+def validate_cnpj(cnpj: str) -> bool:
+    cnpj = re.sub(r'\D', '', cnpj)
+    if len(cnpj) != 14:
+        return False
+    if cnpj in [str(i) * 14 for i in range(10)]:
+        return False
+    weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    sum1 = sum(int(cnpj[i]) * weights1[i] for i in range(12))
+    digit1 = 11 - (sum1 % 11)
+    digit1 = 0 if digit1 >= 10 else digit1
+
+    weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    sum2 = sum(int(cnpj[i]) * weights2[i] for i in range(13))
+    digit2 = 11 - (sum2 % 11)
+    digit2 = 0 if digit2 >= 10 else digit2
+
+    return int(cnpj[12]) == digit1 and int(cnpj[13]) == digit2
+
+
+def _normalize_cnpj_cpf(doc: str) -> str:
+    if not doc or doc == "-":
+        return doc
+    limpo = re.sub(r'\D', '', doc)
+
+    # 1. Regra CPF (11 dígitos): deve seguir a regra atual, sem ser afetado
+    if len(limpo) == 11:
+        return f"{limpo[:3]}.{limpo[3:6]}.{limpo[6:9]}-{limpo[9:]}"
+
+    # 2. CNPJ completo e formatado encontrado no texto
+    is_formatted_cnpj = bool(re.search(r'\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}', doc))
+    if is_formatted_cnpj:
+        if validate_cnpj(limpo):
+            return f"{limpo[:2]}.{limpo[2:5]}.{limpo[5:8]}/{limpo[8:12]}-{limpo[12:]}"
+        else:
+            logger.warning(f"[BLINDAGEM] CNPJ formatado inválido encontrado no texto: '{doc}'. Preservando original.")
+            return doc
+
+    # 3. CNPJ com 14 dígitos
+    if len(limpo) == 14:
+        if validate_cnpj(limpo):
+            return f"{limpo[:2]}.{limpo[2:5]}.{limpo[5:8]}/{limpo[8:12]}-{limpo[12:]}"
+        else:
+            logger.warning(f"[BLINDAGEM] CNPJ de 14 dígitos inválido: '{doc}'. Preservando original.")
+            return doc
+
+    # 4. CNPJ de 13 dígitos
+    elif len(limpo) == 13:
+        valid_candidates = set()
+        for i in range(14):
+            candidate = limpo[:i] + "0" + limpo[i:]
+            if validate_cnpj(candidate):
+                valid_candidates.add(candidate)
+
+        if len(valid_candidates) == 1:
+            cand = list(valid_candidates)[0]
+            return f"{cand[:2]}.{cand[2:5]}.{cand[5:8]}/{cand[8:12]}-{cand[12:]}"
+        else:
+            if len(valid_candidates) > 1:
+                logger.warning(f"[BLINDAGEM] CNPJ de 13 dígitos '{doc}' possui múltiplas reconstruções matemáticas válidas: {list(valid_candidates)}. Preservando original.")
+            else:
+                logger.warning(f"[BLINDAGEM] CNPJ de 13 dígitos '{doc}' não possui nenhuma reconstrução matemática válida. Preservando original.")
+            return doc
+
+    return doc
+
+
+def _normalize_num_ano(text: str) -> str:
+    if not text:
+        return "S/N"
+
+    text = text.strip()
+    if text in ["-", "—", "S/N", "S.N", "S/Nº", "S/N°", "— ao", "—"]:
+        return "S/N"
+
+    def repl(match):
+        num, ano = match.group(1), match.group(2)
+        num_norm = num.zfill(3)
+        if len(ano) == 2:
+            ano_norm = "20" + ano
+        else:
+            ano_norm = ano
+        return f"{num_norm}/{ano_norm}"
+
+    normalized = re.sub(r'(\d+)\s*/\s*(\d+)', repl, text)
+
+    if normalized.isdigit():
+        return normalized.zfill(3)
+
+    return normalized
 
 def _normalize_text(text: str) -> str:
     if text is None:
@@ -98,17 +190,9 @@ class DiarioScraper:
 
         self.is_running = False # Controle de execução simultânea
 
-        # Determine base directory for logs and artifacts
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-
-        self.logs_dir = os.path.join(base_dir, "logs")
-        if not os.path.exists(self.logs_dir):
-            os.makedirs(self.logs_dir)
-
-        self.partial_results_file = os.path.join(base_dir, "partial_results.json")
+        # Determine base directory for logs and artifacts using the paths utility
+        self.logs_dir = str(get_logs_dir())
+        self.partial_results_file = str(get_partial_results_path())
 
     def _save_partial_results(self, results):
         """Salva resultados parciais em JSON para resiliência"""
@@ -135,6 +219,15 @@ class DiarioScraper:
         if not link.startswith("http"):
             return f"https://diariooficial.prefeitura.sp.gov.br/{link}"
         return link
+
+    def _normalize_extracted_fields(self, data):
+        # Normalizar CNPJ/CPF se houver
+        if data.get('doc_fiscal') and data.get('doc_fiscal') != "-":
+            data['doc_fiscal'] = _normalize_cnpj_cpf(data['doc_fiscal'])
+        # Normalizar números com barra se houver
+        for key in ['num_contrato', 'num_aditamento', 'contrato_pai']:
+            if data.get(key) and data.get(key) != "-":
+                data[key] = _normalize_num_ano(data[key])
 
     def extract_details(self, soup, default_summary=""):
         """Método principal de extração (Refatorado)"""
@@ -173,6 +266,9 @@ class DiarioScraper:
         # 4. Blindagem / Validações
         self._apply_shielding(data)
 
+        # 5. Normalização de campos extraídos
+        self._normalize_extracted_fields(data)
+
         return data
 
     def _extract_structured_fields(self, soup, data):
@@ -193,7 +289,43 @@ class DiarioScraper:
             "Objeto da licitação": "explicit_object", "Objeto": "explicit_object"
         }
 
+        # 1. Processamento estruturado de tabelas (tr e células th/td)
+        for table in soup.find_all('table'):
+            for tr in table.find_all('tr'):
+                cells = tr.find_all(['th', 'td'])
+                if len(cells) >= 2:
+                    # Rótulo na primeira célula (th ou td)
+                    label_cell = cells[0]
+                    possible_labels = [label_cell.get_text(strip=True)]
+
+                    # Trata strong ou outros elements de ênfase dentro da célula de rótulo
+                    for sub in label_cell.find_all(['strong', 'b', 'span', 'label']):
+                        sub_txt = sub.get_text(strip=True)
+                        if sub_txt and sub_txt not in possible_labels:
+                            possible_labels.append(sub_txt)
+
+                    for plabel in possible_labels:
+                        clean_plabel = plabel.rstrip(":")
+                        if plabel in mapa or clean_plabel in mapa:
+                            key = mapa.get(plabel) or mapa.get(clean_plabel)
+
+                            # O valor de interesse está nas células seguintes
+                            valor = ""
+                            for next_cell in cells[1:]:
+                                val_txt = next_cell.get_text(" ", strip=True)
+                                if val_txt and val_txt != plabel:
+                                    valor = val_txt
+                                    break
+
+                            if valor:
+                                if not data.get(key) or data[key] == "-" or len(valor) > len(data.get(key, "")):
+                                    data[key] = valor
+                                break # Encontrou rótulo correspondente na linha, passa para próxima tr
+
+        # 2. Busca global por elementos avulsos que não estão dentro de tabelas
         for elem in soup.find_all(['span', 'div', 'strong', 'label', 'p', 'b']):
+            if elem.find_parent('table'):
+                continue # Evitar re-processar elementos de tabelas
             txt = elem.get_text(strip=True)
             clean_txt = txt.rstrip(":")
             if txt in mapa or clean_txt in mapa:
@@ -204,7 +336,7 @@ class DiarioScraper:
                 if proximo:
                     valor = proximo.get_text(" ", strip=True)
                     if valor and valor != txt:
-                        if not data.get(key) or len(valor) > len(data.get(key, "")):
+                        if not data.get(key) or data[key] == "-" or len(valor) > len(data.get(key, "")):
                              data[key] = valor
 
         if data.get("explicit_object"):
@@ -219,11 +351,41 @@ class DiarioScraper:
                 data['modality'] = "LICITAÇÃO"
 
     def _extract_contractor(self, text, data):
-        # Extrair CNPJ se ainda não tiver
-        if not data.get('doc_fiscal') or data.get('doc_fiscal') == "-":
-            m_cnpj = re.search(r'([0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})', text)
-            if m_cnpj:
-                data['doc_fiscal'] = m_cnpj.group(1)
+        # 1. Verificar se o doc_fiscal estruturado já é um CNPJ ou CPF válido
+        current_doc = data.get('doc_fiscal', '-')
+        limpo_current = re.sub(r'\D', '', current_doc) if current_doc else ""
+        current_is_valid = False
+        if len(limpo_current) == 14:
+            current_is_valid = validate_cnpj(limpo_current)
+        elif len(limpo_current) == 11:
+            current_is_valid = True # CPF
+
+        # Extrair CNPJ ou CPF do texto se houver (tem precedência por vir com a formatação correta)
+        m_cnpj = re.search(r'([0-9]{2}\.[0-9]{3}\.[0-9]{3}/[0-9]{4}-[0-9]{2})', text)
+        found_doc = None
+        found_is_cnpj = False
+
+        if m_cnpj:
+            found_doc = m_cnpj.group(1)
+            found_is_cnpj = True
+        else:
+            m_cpf = re.search(r'([0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2})', text)
+            if m_cpf:
+                found_doc = m_cpf.group(1)
+
+        if found_doc:
+            if found_is_cnpj:
+                limpo_found = re.sub(r'\D', '', found_doc)
+                if validate_cnpj(limpo_found):
+                    if not current_is_valid:
+                        data['doc_fiscal'] = found_doc
+                else:
+                    logger.warning(f"[BLINDAGEM] CNPJ formatado inválido encontrado no texto: '{found_doc}'.")
+                    if not current_is_valid:
+                        data['doc_fiscal'] = found_doc
+            else: # CPF
+                if not current_is_valid:
+                    data['doc_fiscal'] = found_doc
 
         # Regra específica para Acordo de Cooperação
         m_acordo = re.search(
@@ -631,9 +793,9 @@ class DiarioScraper:
 
             # --- PROTEÇÃO ABSOLUTA DA CLASSIFICAÇÃO DE ACORDO DE COOPERAÇÃO ---
             # Independentemente do que a IA disse, se for Acordo de Cooperação, forçamos o tipo.
-            num_contrato_up = details.get('contract_number', '').upper()
-            summary_up = details.get('summary', '').upper()
-            full_body_up = details.get('explicit_object', '').upper() + " " + item_html.upper()
+            num_contrato_up = details.get('contract_number', '').upper() if details.get('contract_number') else ''
+            summary_up = details.get('summary', '').upper() if details.get('summary') else details.get('sintese', '').upper()
+            full_body_up = (details.get('explicit_object', '').upper() if details.get('explicit_object') else '') + " " + (details.get('sintese', '').upper() if details.get('sintese') else '')
 
             if re.search(r'\b(?:ACORDOS?\ DE\ COOPERA[ÇC][ÃA]O|TERMO\ DE\ COOPERA[ÇC][ÃA]O)\b', num_contrato_up) or \
                re.search(r'\b(?:ACORDOS?\ DE\ COOPERA[ÇC][ÃA]O|TERMO\ DE\ COOPERA[ÇC][ÃA]O)\b', summary_up) or \
@@ -643,6 +805,7 @@ class DiarioScraper:
                     details['tipo_doc'] = 'ACORDO_COOPERACAO'
 
             # --- FIM PROTEÇÃO ---
+            self._normalize_extracted_fields(details)
         except Exception as e:
             logger.error(f"Falha na IA para doc {item_id}: {e}")
 
@@ -758,9 +921,16 @@ class DiarioScraper:
                         logger.warning(f"[FALHA] {b_config['name']} falhou: {diag}")
 
                 if not browser:
-                    error_detail = f"Não foi possível iniciar nenhum navegador. Último erro: {last_error}"
-                    logger.error(error_detail)
-                    raise Exception(error_detail)
+                    if "Executable doesn't exist" in last_error or "looks like Playwright was not installed" in last_error:
+                        friendly_error = (
+                            "Não foi possível localizar o Google Chrome ou o Microsoft Edge instalado no seu sistema. "
+                            "Por favor, instale ou habilite um desses navegadores (preferencialmente o Microsoft Edge no Windows) "
+                            "para que a raspagem possa ser executada."
+                        )
+                    else:
+                        friendly_error = f"Falha ao iniciar o navegador para a raspagem. Detalhes: {last_error}"
+                    logger.error(friendly_error)
+                    raise Exception(friendly_error)
 
                 context = await browser.new_context(user_agent="Mozilla/5.0 DiárioOficialScraper/1.0")
                 context.set_default_navigation_timeout(self.browser_timeout)

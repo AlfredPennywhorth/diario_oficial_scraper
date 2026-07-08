@@ -1,14 +1,12 @@
 {
   "version": "1.5.4",
-  "release_date": "2026-06-09",
-  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.4/DiarioScraper-v1.5.4.zip",
+  "release_date": "2026-07-08",
+  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.4/DiarioScraper-OneFile-v1.5.4.zip",
   "changelog": [
-    "auto-update robusto no Windows",
-    "isolamento das variáveis herdadas do PyInstaller",
-    "captura correta dos números de aditamentos",
-    "correção da data de assinatura da SIMPRESS",
-    "correção do valor do aditamento da SIMPRESS",
-    "preservação de aditamentos sem número"
+    "BUILD EXPERIMENTAL ONE-FILE",
+    "Executável único autossuficiente compilado com PyInstaller",
+    "Caminhos unificados e persistência de dados no diretório de execução real",
+    "Detecção e fallback refinados para Chrome e Edge locais"
   ],
   "critical": false
 }

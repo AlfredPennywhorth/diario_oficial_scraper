@@ -1,0 +1,131 @@
+723 INFO: PyInstaller: 6.21.0, contrib hooks: 2026.6
+726 INFO: Python: 3.14.3
+785 INFO: Platform: Windows-11-10.0.26200-SP0
+786 INFO: Python environment: D:\diario_official_scraper\venv
+860 INFO: Module search paths (PYTHONPATH):
+['D:\\diario_official_scraper',
+ 'C:\\Python314\\python314.zip',
+ 'C:\\Python314\\DLLs',
+ 'C:\\Python314\\Lib',
+ 'C:\\Python314',
+ 'D:\\diario_official_scraper\\venv',
+ 'D:\\diario_official_scraper\\venv\\Lib\\site-packages',
+ 'D:\\diario_official_scraper\\backend']
+2923 INFO: Appending 'datas' from .spec
+2924 INFO: checking Analysis
+2924 INFO: Building Analysis because Analysis-00.toc is non existent
+2924 INFO: Looking for Python shared library...
+2924 INFO: Using Python shared library: C:\Python314\python314.dll
+2924 INFO: Running Analysis Analysis-00.toc
+2924 INFO: Target bytecode optimization level: 0
+2924 INFO: Initializing module dependency graph...
+2927 INFO: Initializing module graph hook caches...
+3032 INFO: Analyzing modules for base_library.zip ...
+7063 INFO: Processing standard module hook 'hook-math.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+7104 INFO: Processing standard module hook 'hook-heapq.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+9846 INFO: Processing standard module hook 'hook-encodings.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+11387 INFO: Processing standard module hook 'hook-pickle.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+12501 INFO: Processing standard module hook 'hook-difflib.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+21583 INFO: Caching module dependency graph...
+21669 INFO: Analyzing D:\diario_official_scraper\backend\main.py
+22285 INFO: Processing standard module hook 'hook-anyio.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+24260 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+24270 INFO: SetuptoolsInfo: initializing cached setuptools info...
+29767 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+30129 INFO: Processing standard module hook 'hook-xml.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+31364 INFO: Processing standard module hook 'hook-sysconfig.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+31377 INFO: Processing standard module hook 'hook-_ctypes.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+34686 INFO: Processing standard module hook 'hook-pydantic.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+36945 INFO: Processing standard module hook 'hook-platform.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+38564 INFO: Processing standard module hook 'hook-zoneinfo.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+47575 INFO: Processing standard module hook 'hook-uvicorn.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+52579 INFO: Processing standard module hook 'hook-webbrowser.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+54127 INFO: Processing standard module hook 'hook-websockets.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+60213 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+61801 INFO: Processing standard module hook 'hook-playwright.async_api.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\playwright\\_impl\\__pyinstaller'
+70991 INFO: Processing standard module hook 'hook-google.api_core.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+74691 INFO: Processing standard module hook 'hook-grpc.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+77261 INFO: Processing standard module hook 'hook-urllib3.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+77962 INFO: Processing pre-safe-import-module hook 'hook-backports.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+77969 INFO: Setuptools: 'backports' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.backports'!
+78019 INFO: Processing standard module hook 'hook-setuptools.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+78136 INFO: Processing pre-safe-import-module hook 'hook-distutils.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+78480 INFO: Processing pre-safe-import-module hook 'hook-jaraco.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+78485 INFO: Setuptools: 'jaraco' appears to be a full setuptools-vendored copy - creating alias to 'setuptools._vendor.jaraco'!
+78560 INFO: Processing pre-safe-import-module hook 'hook-more_itertools.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+78566 INFO: Setuptools: 'more_itertools' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.more_itertools'!
+79979 INFO: Processing pre-safe-import-module hook 'hook-packaging.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+81616 INFO: Processing standard module hook 'hook-setuptools._vendor.jaraco.text.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+81628 INFO: Processing pre-safe-import-module hook 'hook-importlib_resources.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+84161 INFO: Processing pre-safe-import-module hook 'hook-tomli.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+84166 INFO: Setuptools: 'tomli' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.tomli'!
+87517 INFO: Processing pre-safe-import-module hook 'hook-wheel.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+87524 INFO: Setuptools: 'wheel' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.wheel'!
+89473 INFO: Processing standard module hook 'hook-certifi.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+89953 INFO: Processing standard module hook 'hook-cryptography.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+93147 INFO: hook-cryptography: cryptography does not seem to be using dynamically linked OpenSSL.
+101782 INFO: Processing standard module hook 'hook-pycparser.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+128946 INFO: Processing standard module hook 'hook-httplib2.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+131863 INFO: Processing standard module hook 'hook-googleapiclient.model.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+135027 INFO: Processing pre-safe-import-module hook 'hook-importlib_metadata.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+135032 INFO: Setuptools: 'importlib_metadata' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.importlib_metadata'!
+135270 INFO: Processing standard module hook 'hook-setuptools._vendor.importlib_metadata.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks'
+135557 INFO: Processing pre-safe-import-module hook 'hook-zipp.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+135561 INFO: Setuptools: 'zipp' appears to be a setuptools-vendored copy - creating alias to 'setuptools._vendor.zipp'!
+135911 INFO: Analyzing hidden import 'uvicorn.loops'
+135913 INFO: Analyzing hidden import 'uvicorn.loops.auto'
+135927 INFO: Analyzing hidden import 'uvicorn.protocols.http.auto'
+135932 INFO: Analyzing hidden import 'uvicorn.protocols.websockets.auto'
+135942 INFO: Analyzing hidden import 'uvicorn.lifespan'
+135945 INFO: Analyzing hidden import 'uvicorn.lifespan.on'
+135999 INFO: Analyzing hidden import 'engineio.async_drivers.aiohttp'
+136008 ERROR: Hidden import 'engineio.async_drivers.aiohttp' not found
+136009 INFO: Analyzing hidden import 'BeautifulSoup'
+136012 ERROR: Hidden import 'BeautifulSoup' not found
+136013 INFO: Processing module hooks (post-graph stage)...
+137340 WARNING: Hidden import "pycparser.lextab" not found!
+137341 WARNING: Hidden import "pycparser.yacctab" not found!
+139054 WARNING: Hidden import "tzdata" not found!
+139642 INFO: Performing binary vs. data reclassification (733 entries)
+140073 INFO: Looking for ctypes DLLs
+140292 INFO: Analyzing run-time hooks ...
+140316 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+140338 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+140352 INFO: Including run-time hook 'pyi_rth_setuptools.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+140360 INFO: Including run-time hook 'pyi_rth_cryptography_openssl.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\rthooks'
+140366 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'D:\\diario_official_scraper\\venv\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+140519 INFO: Creating base_library.zip...
+144954 INFO: Looking for dynamic libraries
+D:\diario_official_scraper\venv\Lib\site-packages\PyInstaller\building\build_main.py:227: FutureWarning: 
+
+All support for the `google.generativeai` package has ended. It will no longer be receiving 
+updates or bug fixes. Please switch to the `google.genai` package as soon as possible.
+See README for more details:
+
+https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/README.md
+
+  __import__(package)
+177877 INFO: Extra DLL search directories (AddDllDirectory): []
+177877 INFO: Extra DLL search directories (PATH): []
+183499 INFO: Warnings written to D:\diario_official_scraper\build\scraper_onefile\warn-scraper_onefile.txt
+185660 INFO: Graph cross-reference written to D:\diario_official_scraper\build\scraper_onefile\xref-scraper_onefile.html
+186332 INFO: checking PYZ
+186332 INFO: Building PYZ because PYZ-00.toc is non existent
+186333 INFO: Building PYZ (ZlibArchive) D:\diario_official_scraper\build\scraper_onefile\PYZ-00.pyz
+193933 INFO: Building PYZ (ZlibArchive) D:\diario_official_scraper\build\scraper_onefile\PYZ-00.pyz completed successfully.
+194118 INFO: checking PKG
+194118 INFO: Building PKG because PKG-00.toc is non existent
+194118 INFO: Building PKG (CArchive) DiarioScraper.pkg
+291700 INFO: Building PKG (CArchive) DiarioScraper.pkg completed successfully.
+291822 INFO: Bootloader D:\diario_official_scraper\venv\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\run.exe
+291823 INFO: checking EXE
+291823 INFO: Building EXE because EXE-00.toc is non existent
+291823 INFO: Building EXE from EXE-00.toc
+291830 INFO: Copying bootloader EXE to D:\diario_official_scraper\dist\DiarioScraper.exe
+294271 INFO: Copying icon to EXE
+295718 INFO: Copying 0 resources to EXE
+295718 INFO: Embedding manifest in EXE
+296128 INFO: Appending PKG archive to EXE
+310269 INFO: Fixing EXE headers
+336990 INFO: Building EXE from EXE-00.toc completed successfully.
+337085 INFO: Build complete! The results are available in: D:\diario_official_scraper\dist

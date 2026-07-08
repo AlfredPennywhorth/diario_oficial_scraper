@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -19,6 +19,7 @@ from datetime import datetime
 from scraper_service_layer import ScraperService
 from models import SearchRequest, SearchResult
 from version import get_current_version, check_for_updates
+from paths import get_frontend_dir, get_app_dir, get_logs_dir, get_partial_results_path
 
 # Configure logging
 logging.basicConfig(
@@ -60,11 +61,7 @@ app.add_middleware(
 )
 
 # Serve Frontend
-if getattr(sys, 'frozen', False):
-    base_path = sys._MEIPASS
-    frontend_path = os.path.join(base_path, "frontend")
-else:
-    frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
+frontend_path = str(get_frontend_dir())
 
 if not os.path.exists(frontend_path):
     try: os.makedirs(frontend_path)
@@ -105,11 +102,8 @@ async def start_update():
     import subprocess
     import zipfile
 
-    # 1. Determinar caminhos
-    if getattr(sys, 'frozen', False):
-        app_dir = os.path.dirname(sys.executable)
-    else:
-        app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    # 1. Determinar caminhos usando o módulo unificado paths
+    app_dir = str(get_app_dir())
 
     update_dir = os.path.join(app_dir, "update")
     os.makedirs(update_dir, exist_ok=True)
@@ -117,6 +111,13 @@ async def start_update():
     lock_path = os.path.join(update_dir, "update.lock")
     zip_path = os.path.join(update_dir, "update_temp.zip")
     ps_path = os.path.join(update_dir, "update_helper.ps1")
+
+    # Detectar se estamos em One-File
+    is_one_file = getattr(sys, 'frozen', False) and not os.path.exists(os.path.join(app_dir, "_internal"))
+    if is_one_file:
+        controlled_items_str = '@("DiarioScraper.exe")'
+    else:
+        controlled_items_str = '@("DiarioScraper.exe", "_internal", "frontend", "backend")'
 
     # 2. Verificar se já existe atualização em andamento
     if os.path.exists(lock_path):
@@ -258,7 +259,7 @@ $BackupDir = Join-Path $AppDir "backups/backup_before_update_$Timestamp"
 Write-Log "Criando backup em $BackupDir..."
 try {{
     New-Item -ItemType Directory -Path $BackupDir -Force
-    $Controlled = @("DiarioScraper.exe", "_internal", "frontend", "backend")
+    $Controlled = {controlled_items_str}
     foreach ($item in $Controlled) {{
         $src = Join-Path $AppDir $item
         if (Test-Path $src) {{
