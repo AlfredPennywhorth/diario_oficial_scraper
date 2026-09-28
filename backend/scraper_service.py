@@ -718,7 +718,7 @@ class DiarioScraper:
             "ESCLARECIMENTO", "QUESTIONAMENTO", "DESPACHO DE IMPUGNAÇ",
             "IMPUGNAÇ", "NOTIFICAÇÃO", "ATA DE ABERTURA",
             "DEMONSTRATIVO DAS COMPRAS", "RESPOSTA A QUESTIONAMENTO",
-            "PAGAMENTO", "DESPACHO", "PUBLICAÇÃO"
+            "PAGAMENTO", "DESPACHO"
         ]
 
         if any(x in txt for x in termos_diversos):

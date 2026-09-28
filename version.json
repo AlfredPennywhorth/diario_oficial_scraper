@@ -1,12 +1,10 @@
 {
-  "version": "1.5.4",
-  "release_date": "2026-07-08",
-  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.4/DiarioScraper-OneFile-v1.5.4.zip",
+  "version": "1.5.5",
+  "release_date": "2026-09-25",
+  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.5/DiarioScraper-v1.5.5.zip",
   "changelog": [
-    "BUILD EXPERIMENTAL ONE-FILE",
-    "Executável único autossuficiente compilado com PyInstaller",
-    "Caminhos unificados e persistência de dados no diretório de execução real",
-    "Detecção e fallback refinados para Chrome e Edge locais"
+    "Correção na classificação incorreta de Pregões Eletrônicos como publicações Diversas",
+    "Correção da ordem dos links da publicação (PDF e Visualização Web)"
   ],
   "critical": false
 }

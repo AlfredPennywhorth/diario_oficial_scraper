@@ -90,12 +90,8 @@ version_data = {
     "release_date": datetime.now().strftime("%Y-%m-%d"),
     "download_url": f"https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v{VERSION}/DiarioScraper-v{VERSION}.zip",
     "changelog": [
-        "Sistema de Auto-Atualização em 1 clique adicionado à barra de notificação (com limpeza de resíduos e reinício automático)",
-        "Design visual refinado baseado no Impeccable (visual limpo, OKLCH, Space Grotesk + Instrument Sans)",
-        "Máscara oficial do CNPJ/CPF aplicada automaticamente com formatação padronizada",
-        "Valor por extenso em português adicionado ao campo de Valor no Texto de Email",
-        "Proteção contra duplicidade de valor por extenso em execuções com IA ativa",
-        "Correção do título de cabeçalho na visualização de email (removendo MAPFRE FIX)"
+        "Correção na classificação incorreta de Pregões Eletrônicos como publicações Diversas",
+        "Correção da ordem dos links da publicação (PDF e Visualização Web)"
     ],
     "critical": False
 }
