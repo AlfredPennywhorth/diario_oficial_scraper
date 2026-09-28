@@ -725,10 +725,10 @@ function renderTextView(results) {
             const pubLabel = (modality && modality !== '-' ? modality : "PUBLICACAO");
             html += `<p>
                 <strong>Número da Publicação: </strong> 
-                <a href="${item.link_html}" target="_blank" style="color:#2563eb;text-decoration:none">${pubLabel} ${pubNum}</a>
+                <a href="${item.link_pdf}" target="_blank" style="color:#2563eb;text-decoration:none">${pubLabel} ${pubNum}</a>
              </p>`;
 
-            html += `<p><strong>Documento: </strong> <a href="${item.link_pdf}" target="_blank" style="color:#2563eb;text-decoration:none">${item.document_id || '-'}</a></p>`;
+            html += `<p><strong>Documento: </strong> <a href="${item.link_html}" target="_blank" style="color:#2563eb;text-decoration:none">${item.document_id || '-'}</a></p>`;
 
             if (tipo !== 'DIVERSOS') {
                 const docFiscal = formatarDocFiscal(item.company_doc);

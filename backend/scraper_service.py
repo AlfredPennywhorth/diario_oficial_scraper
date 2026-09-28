@@ -733,8 +733,8 @@ class DiarioScraper:
         # Fallback para modalidade apenas se houver evidência de ser a publicação principal
         # e NÃO for apenas um termo genérico
         if any(x in modality for x in ["PREGÃO", "PREGAO", "LICITAÇÃO", "LICITACAO"]):
-             # Exige 'OBJETO' + algum dado relevante (VALOR ou CONTRATADA) para não ser DIVERSOS
-             if "OBJETO" in txt and (any(v in txt for v in ["VALOR", "R$", "CONTRATAD", "VENCEDOR", "ADJUDIC"])):
+             # Exige 'OBJETO' para não ser DIVERSOS genérico (avisos de pregão podem não ter valor ou vencedor ainda)
+             if "OBJETO" in txt:
                  data['tipo_doc'] = 'PREGAO'
                  return
 

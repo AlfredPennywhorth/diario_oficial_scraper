@@ -303,8 +303,8 @@ class DiarioFormatter:
 
         return f"""<div class="card compra">
         <span class="label">Número do Processo:</span> <span class="val">{r.process_number}</span><br>
-        <span class="label">Número da Publicação:</span> <a href="{r.link_html}">{mod_nome} {num_pub}</a><br>
-        <span class="label">Documento:</span> <a href="{r.link_pdf}">{r.document_id}</a><br>
+        <span class="label">Número da Publicação:</span> <a href="{r.link_pdf}">{mod_nome} {num_pub}</a><br>
+        <span class="label">Documento:</span> <a href="{r.link_html}">{r.document_id}</a><br>
         <span class="label">Licitante Vencedor:</span> <span class="val">{vencedor}</span><br>
         <span class="label">Modalidade:</span> <span class="val">{mod_nome}</span><br>
         <span class="label">Data da Abertura:</span> <span class="val">{data_abertura}</span><br>

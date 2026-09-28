@@ -9,7 +9,7 @@ from typing import Optional, Dict
 logger = logging.getLogger(__name__)
 
 # Versão atual do aplicativo (atualizar manualmente a cada release)
-VERSION = "1.5.5"
+VERSION = "1.5.6"
 
 # URL do arquivo de metadados de versão no GitHub
 VERSION_CHECK_URL = "https://raw.githubusercontent.com/AlfredPennywhorth/diario_oficial_scraper/main/version.json"

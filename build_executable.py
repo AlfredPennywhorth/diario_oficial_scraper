@@ -90,8 +90,8 @@ version_data = {
     "release_date": datetime.now().strftime("%Y-%m-%d"),
     "download_url": f"https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v{VERSION}/DiarioScraper-v{VERSION}.zip",
     "changelog": [
-        "Correção na classificação incorreta de Pregões Eletrônicos como publicações Diversas",
-        "Correção da ordem dos links da publicação (PDF e Visualização Web)"
+        "Correção na classificação de Pregões sem Valor/Contratada",
+        "Correção da ordem dos links da publicação (PDF e Visualização Web) invertida na v1.5.4"
     ],
     "critical": False
 }
