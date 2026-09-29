@@ -292,7 +292,12 @@ function determineType(item) {
             tipo = 'ACORDO_COOPERACAO';
         } else if (/\b(TERMO\ DE\ PARCERIA|CONV[ÊE]NIO|TERMO\ DE\ FOMENTO|TERMO\ DE\ COLABORA[ÇC][ÃA]O)\b/.test(fullTerm)) {
             tipo = 'PARCERIA';
-        } else if (fullTerm.includes('ESCLARECIMENTO') || fullTerm.includes('QUESTIONAMENTO') || fullTerm.includes('IMPUGNAÇ') || fullTerm.includes('NOTIFICAÇÃO') || fullTerm.includes('DESPACHO')) {
+        } else if (
+            (() => {
+                let clean = fullTerm.replace("TEXTO DO DESPACHO:", "").replace("TEXTO DO DESPACHO", "");
+                return clean.includes('ESCLARECIMENTO') || clean.includes('QUESTIONAMENTO') || clean.includes('IMPUGNAÇ') || clean.includes('NOTIFICAÇÃO') || clean.includes('DESPACHO');
+            })()
+        ) {
             tipo = 'DIVERSOS';
         } else if (fullTerm.includes('DISPENSA')) {
             tipo = 'PEDIDO_COMPRA';

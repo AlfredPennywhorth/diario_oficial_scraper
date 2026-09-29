@@ -721,7 +721,8 @@ class DiarioScraper:
             "PAGAMENTO", "DESPACHO"
         ]
 
-        if any(x in txt for x in termos_diversos):
+        txt_clean = txt.replace("TEXTO DO DESPACHO:", "").replace("TEXTO DO DESPACHO", "")
+        if any(x in txt_clean for x in termos_diversos):
             data['tipo_doc'] = 'DIVERSOS'
             return
 

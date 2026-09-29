@@ -1,10 +1,9 @@
 {
-  "version": "1.5.6",
-  "release_date": "2026-09-28",
-  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.6/DiarioScraper-v1.5.6.zip",
+  "version": "1.5.7",
+  "release_date": "2026-09-29",
+  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.7/DiarioScraper-v1.5.7.zip",
   "changelog": [
-    "Correção na classificação de Pregões sem Valor/Contratada",
-    "Correção da ordem dos links da publicação (PDF e Visualização Web) invertida na v1.5.4"
+    "Correção definitiva na classificação de Pregões, ignorando rótulo 'Texto do despacho'"
   ],
   "critical": false
 }
