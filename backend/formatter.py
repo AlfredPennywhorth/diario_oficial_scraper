@@ -148,7 +148,15 @@ class DiarioFormatter:
             return "PARCERIA"
 
         termos_diversos = ["ESCLARECIMENTO", "QUESTIONAMENTO", "IMPUGNAÇ", "IMPUGNAC", "NOTIFICAÇÃO", "DESPACHO", "PAGAMENTO"]
-        if any(x in txt for x in termos_diversos):
+        txt_clean = (
+            txt.replace("TEXTO DO DESPACHO:", "")
+            .replace("TEXTO DO DESPACHO", "")
+            .replace("DESPACHO DE ADJUDICAÇÃO", "")
+            .replace("DESPACHO DE ADJUDICACAO", "")
+            .replace("DESPACHO DE HOMOLOGAÇÃO", "")
+            .replace("DESPACHO DE HOMOLOGACAO", "")
+        )
+        if any(x in txt_clean for x in termos_diversos):
             return "DIVERSOS"
 
         termos_fortes_pregao = [
@@ -159,7 +167,7 @@ class DiarioFormatter:
             return "PREGAO"
 
         if any(x in txt for x in ["DISPENSA"]):
-            return "PEDIDO_COMPRA"
+            return "DIVERSOS"
 
         return "DIVERSOS"
 
@@ -296,10 +304,14 @@ class DiarioFormatter:
 
     def formatar_licitacao(self, r: SearchResult) -> str:
         """Formata card de licitação"""
-        mod_nome = self.extrair_modalidade(r.summary)
-        num_pub = self.extrair_numero_licitacao(r.summary, r.document_id)
-        vencedor = self.extrair_vencedor(r.summary)
-        data_abertura = self.extrair_data_abertura(r.summary)
+        mod_nome = r.modality if r.modality and r.modality != "-" else self.extrair_modalidade(r.summary)
+        num_pub = r.contract_number if r.contract_number and r.contract_number != "-" else self.extrair_numero_licitacao(r.summary, r.document_id)
+        num_pub = self._normalize_num_ano(num_pub) if "/" in num_pub else num_pub
+        vencedor = r.contractor if r.contractor and r.contractor != "-" else self.extrair_vencedor(r.summary)
+        if r.company_doc and r.company_doc != "-" and vencedor != "EM PROCESSO":
+            formatted_doc = self._normalize_cnpj_cpf(r.company_doc)
+            vencedor = f"{vencedor} , CNPJ nº {formatted_doc}"
+        data_abertura = r.opening_date if r.opening_date and r.opening_date != "-" else self.extrair_data_abertura(r.summary)
 
         return f"""<div class="card compra">
         <span class="label">Número do Processo:</span> <span class="val">{r.process_number}</span><br>

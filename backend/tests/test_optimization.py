@@ -2,8 +2,11 @@ import asyncio
 import os
 import sys
 import time
+import pytest
 from playwright.async_api import async_playwright
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.getenv('RUN_PORTAL_INTEGRATION') != '1', reason='Requer navegador instalado e acesso ao portal; execute com RUN_PORTAL_INTEGRATION=1')
 async def test_optimizations():
     url = "https://diariooficial.prefeitura.sp.gov.br/md_epubli_controlador.php?acao=materias_pesquisar"
     
@@ -14,17 +17,10 @@ async def test_optimizations():
         
         print("--- Test 1: DOMContentLoaded ---")
         start = time.time()
-        try:
-            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            print(f"Goto (domcontentloaded) took: {time.time() - start:.2f}s")
-        except Exception as e:
-            print(f"Goto failed: {e}")
-            return
+        response = await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+        assert response and response.ok, f"Portal indisponível: HTTP {response.status if response else 'desconhecido'}"
+        print(f"Goto (domcontentloaded) took: {time.time() - start:.2f}s")
 
-        # Try to submit form (Test if page uses JS that is ready)
-        # We need to test if the specific JS required for search works.
-        # The original code injects a form, so it doesn't rely on page JS, just DOM being ready.
-        
         current_date = "10/02/2026"
         orgao_id = "68"
         
@@ -39,21 +35,15 @@ async def test_optimizations():
         
         print("Submitting form...")
         start_submit = time.time()
-        # We expect navigation
         async with page.expect_navigation():
              await page.evaluate(js_cmd)
         
         print(f"Form submission navigation took: {time.time() - start_submit:.2f}s")
         
-        # Check if we have results
-        try:
-            await page.wait_for_selector('div.dadosDocumento', timeout=5000)
-            print("Results found!")
-        except:
-            print("No results selector found (might be no data or error).")
+        await page.wait_for_selector('div.dadosDocumento', timeout=5000)
+        print("Results found!")
 
         print("\n--- Test 2: Consecutive Search (No Goto) ---")
-        # Now we are on the results page. Can we search for the NEXT day without goto?
         next_date = "11/02/2026"
         js_cmd_next = f"""
             var f = document.createElement('form'); f.action='md_epubli_controlador.php?acao=materias_pesquisar'; f.method='POST';
@@ -66,15 +56,11 @@ async def test_optimizations():
         
         print(f"Attempting search for {next_date} directly from current page...")
         start_next = time.time()
-        try:
-             async with page.expect_navigation(timeout=10000):
-                 await page.evaluate(js_cmd_next)
-             print(f"Consecutive search navigation took: {time.time() - start_next:.2f}s")
-             # Wait for results or 'Nenhum registro'
-             await page.wait_for_load_state('domcontentloaded')
-             print("Consecutive search page loaded.")
-        except Exception as e:
-            print(f"Consecutive search failed: {e}")
+        async with page.expect_navigation(timeout=10000):
+            await page.evaluate(js_cmd_next)
+        print(f"Consecutive search navigation took: {time.time() - start_next:.2f}s")
+        await page.wait_for_load_state('domcontentloaded')
+        print("Consecutive search page loaded.")
 
         await browser.close()
 

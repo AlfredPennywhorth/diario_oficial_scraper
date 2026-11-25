@@ -4,17 +4,146 @@ import os
 import sys
 import logging
 import json
+import uuid
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import async_playwright, Error as PlaywrightError, TimeoutError as PlaywrightTimeoutError
 from models import SearchResult
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 import unicodedata
 from paths import get_logs_dir, get_partial_results_path
 
 # Configuração de Logs
 logger = logging.getLogger(__name__)
+
+
+class SearchFailure(Exception):
+    def __init__(self, message, transient=False):
+        super().__init__(message)
+        self.transient = transient
+
+
+class IncompleteSearch(Exception):
+    def __init__(self, results, failures):
+        self.results = results
+        self.failures = failures
+        super().__init__(f"Pesquisa incompleta. Falhas em: {', '.join(failures)}. Os resultados exibidos são parciais.")
+
+
+def _classify_unit(metadata, soup=None):
+    headers = [node.get_text(' ', strip=True) for node in soup.select('.Centralizado_Timbre_Secretaria')] if soup else []
+    sources = [metadata] + headers
+    found = set()
+    for source in sources:
+        normalized = _normalize_text(source)
+        for unit in re.findall(r'\bcet\s*/\s*([a-z0-9]+)\b', normalized):
+            found.add(unit if unit in ('dbp', 'dbe', 'gsu') else 'outra')
+        compact = normalized.replace(' ', '')
+        if 'benseservicosespecializados' in compact:
+            found.add('dbe')
+        if 'benseservicospadronizados' in compact:
+            found.add('dbp')
+    if len(found) != 1:
+        return None
+    return found.pop().upper()
+
+
+def _is_transient(exc):
+    return (isinstance(exc, PlaywrightTimeoutError)
+            or isinstance(exc, SearchFailure) and exc.transient
+            or isinstance(exc, PlaywrightError) and any(code in str(exc) for code in
+                ('ERR_CONNECTION_', 'ERR_TIMED_OUT', 'ERR_NAME_NOT_RESOLVED')))
+
+
+def _reports_empty(content):
+    soup = BeautifulSoup(content, 'html.parser')
+    for element in soup.select('script, style, template, [hidden], [aria-hidden="true"]'):
+        element.decompose()
+    for element in soup.find_all(style=True):
+        if re.search(r'(?:display\s*:\s*none|visibility\s*:\s*hidden)', element['style'], re.IGNORECASE):
+            element.decompose()
+    text = _normalize_text(soup.get_text(' ', strip=True))
+    return any(message in text for message in (
+        'nenhum registro encontrado',
+        'nao foram encontrados registros',
+        'sem publicacoes no dia',
+    ))
+
+
+class _ListingSnapshot:
+    """Resultado de listagem copiado do DOM, que permanece válido após navegar para outra página."""
+    class _Link:
+        def __init__(self, href):
+            self._href = href
+
+        async def get_attribute(self, name):
+            return self._href if name == 'href' else None
+
+    def __init__(self, text, href):
+        self._text = text
+        self._href = href
+
+    async def inner_text(self):
+        return self._text
+
+    async def query_selector(self, selector):
+        return self._Link(self._href) if self._href else None
+
+
+def _format_contract_number(raw, reference_year):
+    """Normaliza número de contrato para NNN/AAAA; sem ano confiável, valores sem ano explícito ficam intactos."""
+    value = (raw or '').strip()
+    m = re.fullmatch(r'(\d{1,4})/(\d{2}|\d{4})', value)
+    if m:
+        number, year = m.groups()
+        year = year if len(year) == 4 else f'20{year}'
+        return f'{number.zfill(3)}/{year}'
+    ref = str(reference_year or '')
+    if not re.fullmatch(r'\d{4}', ref) or not re.fullmatch(r'\d+', value):
+        return value
+    if len(value) <= 3:
+        return f'{value.zfill(3)}/{ref}'
+    for suffix, min_len in ((ref, 5), (ref[2:], 4)):
+        if len(value) >= min_len and value.endswith(suffix):
+            return f'{value[:-len(suffix)].zfill(3)}/{ref}'
+    return value
+
+
+def _normalize_parent_contract(raw, summary):
+    """Normalize parent contract using an explicit reference."""
+    raw = str(raw or "").strip()
+
+    pattern = (
+        r"\bcontrato\s*(?:n\s*[\u00ba\u00b0o.]*\s*)?"
+        r"(\d{1,4})\s*/\s*(\d{2}|\d{4})\b"
+    )
+
+    for match in re.finditer(pattern, summary or "", re.IGNORECASE):
+        number, year = match.groups()
+        compact = number + year
+        formatted = _format_contract_number(f"{number}/{year}", None)
+
+        if (
+            raw in ("", "-", "\u2014")
+            or re.sub(r"\D", "", raw) == compact
+            or raw == formatted
+        ):
+            return formatted
+
+    return raw
+
+
+_MAX_PAGES = 500
+
+
+def _listing_doc_id(text):
+    m = re.search(r'Documento:\s*(\d+)', text or '')
+    return m.group(1) if m else None
+
+
+def _listing_offsets(content):
+    return [int(n) for n in re.findall(r"navegar\('(\d+)'\)", content)]
 
 
 def validate_cnpj(cnpj: str) -> bool:
@@ -120,7 +249,8 @@ def _normalize_text(text: str) -> str:
 
 TERM_PATTERNS = {
     "acordo de cooperacao": ["cooperacao"],
-    "pregao": ["pregao"],
+    "pregao": ["pregao", "dispensa"],
+    "dispensa": ["dispensa"],
     "aditamento": ["aditamento", "aditivo", "apostilamento"],
     "termo de colaboracao": ["colaboracao"],
     "termo de fomento": ["fomento"],
@@ -193,6 +323,7 @@ class DiarioScraper:
         # Determine base directory for logs and artifacts using the paths utility
         self.logs_dir = str(get_logs_dir())
         self.partial_results_file = str(get_partial_results_path())
+        self._run_results_file = None
 
     def _save_partial_results(self, results):
         """Salva resultados parciais em JSON para resiliência"""
@@ -206,10 +337,136 @@ class DiarioScraper:
                 else:
                     temp_results.append(r)
 
-            with open(self.partial_results_file, "w", encoding="utf-8") as f:
+            if self._run_results_file is None:
+                directory = os.path.dirname(self.partial_results_file)
+                self._run_results_file = os.path.join(directory, f"partial_results_{uuid.uuid4().hex}.json")
+            with open(self._run_results_file, "w", encoding="utf-8") as f:
                 json.dump(temp_results, f, ensure_ascii=False, indent=2)
+            logger.info("Resultados parciais salvos em %s", self._run_results_file)
         except Exception as e:
             logger.error(f"Erro ao salvar resultados parciais: {e}")
+
+    @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=2, max=5), retry=retry_if_exception(_is_transient), reraise=True)
+    async def _open_search_page(self, page, date, timeout):
+        status = None
+        try:
+            response = await page.goto(self.base_url, timeout=timeout)
+            status = response.status if response else None
+            if status is not None and status >= 400:
+                raise SearchFailure(f'HTTP {status} ao acessar o portal', transient=status in (408, 429, 500, 502, 503, 504))
+        except Exception:
+            logger.exception('data=%s url=%s etapa=acesso à página de pesquisa timeout_ms=%s HTTP=%s', date, page.url, timeout, status)
+            raise
+
+    async def _fetch_day(self, page, current_date):
+        timeout = 30000
+        stage = 'envio da pesquisa'
+        status = None
+        script = """({date, orgao}) => {
+            const form = document.createElement('form');
+            form.action = 'md_epubli_controlador.php?acao=materias_pesquisar';
+            form.method = 'POST';
+            for (const [name, value] of Object.entries({hdnDataPublicacao: date, hdnOrgaoFiltro: orgao, hdnModoPesquisa: 'DATA', hdnVisualizacao: 'L'})) {
+                const input = document.createElement('input'); input.name = name; input.value = value; form.appendChild(input);
+            }
+            document.body.appendChild(form); form.submit();
+        }"""
+        for attempt in range(2):
+            try:
+                timeout = 30000
+                status = None
+                if attempt:
+                    stage = 'reabertura da página de pesquisa'
+                    await self._open_search_page(page, current_date, timeout)
+                stage = 'envio da pesquisa'
+                async with page.expect_navigation(timeout=timeout) as navigation:
+                    await page.evaluate(script, {'date': current_date, 'orgao': self.orgao_id})
+                response = await navigation.value
+                status = response.status if response else None
+                if status is not None and status >= 400:
+                    raise SearchFailure(f'HTTP {status}', transient=status in (408, 429, 500, 502, 503, 504))
+                stage = 'espera dos resultados'
+                timeout = 3000
+                try:
+                    await page.wait_for_selector('div.dadosDocumento', state='attached', timeout=timeout)
+                except PlaywrightTimeoutError:
+                    content = await page.content()
+                    if _reports_empty(content):
+                        logger.info('data=%s url=%s etapa=sem resultados HTTP=%s', current_date, page.url, status)
+                        return []
+                    timeout = 10000
+                    try:
+                        await page.wait_for_selector('div.dadosDocumento', state='attached', timeout=timeout)
+                    except PlaywrightTimeoutError as exc:
+                        if _reports_empty(await page.content()):
+                            logger.info('data=%s url=%s etapa=sem resultados HTTP=%s', current_date, page.url, status)
+                            return []
+                        raise SearchFailure('Página sem resultados reconhecíveis: possível alteração estrutural ou falha de sessão') from exc
+                elements = await page.query_selector_all('div.dadosDocumento')
+                if elements:
+                    if max(_listing_offsets(await page.content()), default=0) > 0:
+                        return await self._collect_pages(page, current_date, elements)
+                    return elements
+                content = await page.content()
+                if _reports_empty(content):
+                    logger.info('data=%s url=%s etapa=sem resultados HTTP=%s', current_date, page.url, status)
+                    return []
+                raise SearchFailure('Resultados desapareceram após o carregamento; possível alteração do DOM')
+            except Exception as exc:
+                logger.exception('data=%s url=%s etapa=%s timeout_ms=%s HTTP=%s tentativa=%s seletor=div.dadosDocumento',
+                                 current_date, page.url, stage, timeout, status, attempt + 1)
+                if not _is_transient(exc) or attempt == 1:
+                    raise
+                await asyncio.sleep(2)
+
+    async def _snapshot_listing(self, page):
+        rows = await page.evaluate("""() => Array.from(document.querySelectorAll('div.dadosDocumento')).map(el => {
+            const a = el.querySelector('a[href*="visualizar"]');
+            return {text: el.innerText, href: a ? a.getAttribute('href') : null};
+        })""")
+        return [_ListingSnapshot(row['text'], row['href']) for row in rows]
+
+    async def _collect_pages(self, page, current_date, first_elements):
+        """Percorre as páginas da listagem; em falha, anexa o que já foi coletado à exceção.
+
+        O próximo deslocamento é o menor link de navegação maior que o atual (os links podem ser uma
+        janela móvel). Página sem documentos novos indica repetição e encerra a coleta.
+        """
+        snapshots = await self._snapshot_listing(page)
+        seen = {_listing_doc_id(s_._text) for s_ in snapshots} - {None}
+        visited = {0}
+        offset = 0
+        try:
+            for _ in range(_MAX_PAGES):
+                following = [o for o in _listing_offsets(await page.content()) if o > offset and o not in visited]
+                if not following:
+                    return snapshots
+                offset = min(following)
+                visited.add(offset)
+                async with page.expect_navigation(timeout=30000) as navigation:
+                    await page.evaluate("(inicio) => navegar(inicio)", str(offset))
+                response = await navigation.value
+                status = response.status if response else None
+                if status is not None and status >= 400:
+                    raise SearchFailure(f'HTTP {status} ao paginar', transient=status in (408, 429, 500, 502, 503, 504))
+                await page.wait_for_selector('div.dadosDocumento', state='attached', timeout=10000)
+                page_items = await self._snapshot_listing(page)
+                if not page_items:
+                    raise SearchFailure(f'Página com início {offset} sem resultados')
+                ids = [_listing_doc_id(i._text) for i in page_items]
+                new_items = [i for i, d in zip(page_items, ids) if d is None or d not in seen]
+                if not new_items:
+                    logger.warning('data=%s etapa=paginacao inicio=%s motivo=página repetida, coleta encerrada', current_date, offset)
+                    return snapshots
+                seen.update(d for d in ids if d)
+                snapshots.extend(new_items)
+                logger.info('data=%s etapa=paginacao inicio=%s itens=%s novos=%s', current_date, offset, len(page_items), len(new_items))
+            raise SearchFailure('Limite de páginas excedido na listagem')
+        except Exception as exc:
+            logger.exception('data=%s etapa=paginacao inicio=%s', current_date, offset)
+            failure = exc if isinstance(exc, SearchFailure) else SearchFailure(str(exc), transient=_is_transient(exc))
+            failure.partial = snapshots
+            raise failure from exc
 
     def clean_link(self, link):
         if not link: return "#"
@@ -344,7 +601,7 @@ class DiarioScraper:
 
     def _extract_modality(self, text, data):
         if data.get('modality') in ["-", "", None]:
-            m_mod = re.search(r'(PREGÃO ELETRÔNICO|PREGÃO|CONCORRÊNCIA|TOMADA DE PREÇOS|CONVITE|LEILÃO|DIÁLOGO COMPETITIVO|INEXIGIBILIDADE|DISPENSA)', text, re.IGNORECASE)
+            m_mod = re.search(r'(PREGÃO ELETRÔNICO|PREGÃO|CONCORRÊNCIA|TOMADA DE PREÇOS|CONVITE|LEILÃO|DIÁLOGO COMPETITIVO|INEXIGIBILIDADE|DISPENSA ELETRÔNICA|DISPENSA DE LICITAÇÃO|DISPENSA)', text, re.IGNORECASE)
             if m_mod:
                 data['modality'] = m_mod.group(1).upper()
             elif "LICITAÇÃO" in text.upper():
@@ -449,13 +706,13 @@ class DiarioScraper:
 
     def _extract_contract_info(self, text, data):
         # 1. Busca específica por CONTRATO com prioridade (pode sobrescrever labels genéricos)
-        m_con = re.search(r'(?:Formalização d[oa] |Extrato de |Termo de |Celebrado o )?Contrato\s*(?:n[º°.º]|n[°º])?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+        m_con = re.search(r'(?:Formalização d[oa] |Extrato de |Termo de |Celebrado o )?Contrato\s*(?:n[º°.º]|n[°º])?\s*(\d[\d\.]*(?:/[\d]{2,4})?)', text, re.IGNORECASE)
         if m_con:
              data['num_contrato'] = m_con.group(1)
 
         # 2. Busca genérica se ainda estiver com valor padrão ou "-"
         if data.get('num_contrato') in ["-", "", None]:
-            m_id = re.search(r'(?:Pregão(?: Eletrônico)?|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Coopera[çc][ãa]o|Termo de Doação|Termo de Comodato)\s*(?:nº|n°)?\s*([\d\.]+(?:/[\d]{2,4})?)', text, re.IGNORECASE)
+            m_id = re.search(r'(?:Pregão(?: Eletrônico)?|Dispensa(?: Eletrônica| de Licitação)?|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Coopera[çc][ãa]o|Termo de Doação|Termo de Comodato)\s*(?:nº|n°|n\.º)?\s*(\d[\d\.]*(?:/[\d]{2,4})?)', text, re.IGNORECASE)
             if m_id:
                 data['num_contrato'] = m_id.group(1)
 
@@ -699,9 +956,9 @@ class DiarioScraper:
              data['tipo_doc'] = 'PARCERIA'
              return
 
-        # 4. DISPENSA / COMPRA (Se houver evidência forte)
-        if "DISPENSA" in txt or ("DISPENSA" in modality and "OBJETO" in txt):
-             data['tipo_doc'] = 'PEDIDO_COMPRA'
+        # 4. DISPENSA (Classificada como DIVERSOS / Baixa Prioridade)
+        if "DISPENSA" in txt or "DISPENSA" in modality:
+             data['tipo_doc'] = 'DIVERSOS'
              return
 
         # 5. PREGÃO (Exige evidência explícita de pregão/licitação)
@@ -721,7 +978,14 @@ class DiarioScraper:
             "PAGAMENTO", "DESPACHO"
         ]
 
-        txt_clean = txt.replace("TEXTO DO DESPACHO:", "").replace("TEXTO DO DESPACHO", "")
+        txt_clean = (
+            txt.replace("TEXTO DO DESPACHO:", "")
+            .replace("TEXTO DO DESPACHO", "")
+            .replace("DESPACHO DE ADJUDICAÇÃO", "")
+            .replace("DESPACHO DE ADJUDICACAO", "")
+            .replace("DESPACHO DE HOMOLOGAÇÃO", "")
+            .replace("DESPACHO DE HOMOLOGACAO", "")
+        )
         if any(x in txt_clean for x in termos_diversos):
             data['tipo_doc'] = 'DIVERSOS'
             return
@@ -860,13 +1124,41 @@ class DiarioScraper:
         cleaned = re.sub(r'^(?:CELEBRAÇÃO\s+DE\s+)?ACORDO\s+DE\s+COOPERA[ÇC][ÃA]O\s+(?:PARA\s+A\s+|PARA\s+)?', '', text, flags=re.IGNORECASE)
         return cleaned.strip()
 
+    async def _read_listing_item(self, element, terms):
+        text = await element.inner_text()
+        match_id = re.search(r'Documento:\s*(\d+)', text)
+        document_id = match_id.group(1) if match_id else 'S/N'
+        matches_term = not terms
+        matched_term = 'Geral'
+        for term in terms:
+            matched, pattern = _match_term(term, text)
+            if matched:
+                matches_term = True
+                matched_term = term
+                logger.info("[FILTRO] Correspondencia encontrada para o termo '%s' (padrao: '%s') no texto: %s...", term, pattern, text[:150])
+                break
+
+        match_process = re.search(r'Processo:?\s?([\d\./-]+)', text)
+        link_element = await element.query_selector('a[href*="visualizar"]')
+        href = await link_element.get_attribute('href') if link_element else None
+        unit_lines = re.findall(r'(?im)^\s*(?:unidade respons[aá]vel|unidade|departamento)\s*:\s*([^\n]+)', text)
+        breadcrumb = re.search(r'(?m)^\s*CET\s*>\s*(CET/[^\s]+)', text)
+        if breadcrumb:
+            unit_lines.append(breadcrumb.group(1))
+        return {"url": self.clean_link(href) if href else None, "doc_id": document_id,
+                "processo": match_process.group(1) if match_process else 'N/A',
+                "term": matched_term, "matches_term": matches_term, "unit_metadata": ' '.join(unit_lines)}
+
     async def scrape(self, start_date: str | datetime, end_date: str | datetime, terms: list, status_callback=None, use_ai=True):
         if self.is_running:
             raise Exception("O robô já está em execução. Aguarde a finalização.")
 
         self.is_running = True
+        self._run_results_file = None
         start_time = datetime.now()
         results = []
+        failures = []
+        current_date = None
 
         try:
             if isinstance(start_date, str):
@@ -919,7 +1211,7 @@ class DiarioScraper:
                         else:
                             diag = f"Erro inesperado: {err_msg[:100]}"
 
-                        logger.warning(f"[FALHA] {b_config['name']} falhou: {diag}")
+                        logger.warning("[FALHA] %s falhou: %s", b_config['name'], diag, exc_info=True)
 
                 if not browser:
                     if "Executable doesn't exist" in last_error or "looks like Playwright was not installed" in last_error:
@@ -929,88 +1221,78 @@ class DiarioScraper:
                             "para que a raspagem possa ser executada."
                         )
                     else:
-                        friendly_error = f"Falha ao iniciar o navegador para a raspagem. Detalhes: {last_error}"
+                        friendly_error = f"Não foi possível iniciar nenhum navegador. Último erro: {last_error}"
                     logger.error(friendly_error)
-                    raise Exception(friendly_error)
+                    raise SearchFailure(friendly_error)
 
-                context = await browser.new_context(user_agent="Mozilla/5.0 DiárioOficialScraper/1.0")
+                context = await browser.new_context()
                 context.set_default_navigation_timeout(self.browser_timeout)
                 page = await context.new_page()
 
                 logger.info(f"Acessando URL base: {self.base_url}")
-                await page.goto(self.base_url, timeout=self.browser_timeout)
+                await self._open_search_page(page, ','.join(date_list), self.browser_timeout)
 
                 total_days = len(date_list)
                 for day_idx, current_date in enumerate(date_list):
                     progress_msg = f"Processando dia {day_idx+1} de {total_days}: {current_date}"
                     if status_callback: await status_callback(progress_msg)
 
-                    @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=2, max=5))
-                    async def fetch_results_with_retry():
-                        try: _ = page.url
-                        except: await page.goto(self.base_url, timeout=30000)
-
-                        js_script = f"""
-                            var f = document.createElement('form'); f.action='md_epubli_controlador.php?acao=materias_pesquisar'; f.method='POST';
-                            var i1=document.createElement('input');i1.name='hdnDataPublicacao';i1.value='{current_date}';f.appendChild(i1);
-                            var i2=document.createElement('input');i2.name='hdnOrgaoFiltro';i2.value='{self.orgao_id}';f.appendChild(i2);
-                            var i3=document.createElement('input');i3.name='hdnModoPesquisa';i3.value='DATA';f.appendChild(i3);
-                            var i4=document.createElement('input');i4.name='hdnVisualizacao';i4.value='L';f.appendChild(i4);
-                            document.body.appendChild(f); f.submit();
-                        """
-                        try:
-                            async with page.expect_navigation(timeout=30000):
-                                await page.evaluate(js_script)
-                        except: pass
-
-                        try:
-                            await page.wait_for_selector('div.dadosDocumento', state="attached", timeout=3000)
-                            return await page.query_selector_all('div.dadosDocumento')
-                        except:
-                             content = await page.content()
-                             if any(p in content for p in ["Nenhum registro encontrado", "Não foram encontrados registros"]):
-                                 return []
-                             await page.wait_for_selector('div.dadosDocumento', state="attached", timeout=10000)
-                             return await page.query_selector_all('div.dadosDocumento')
-
-                    elementos = []
                     try:
-                        elementos = await fetch_results_with_retry()
-                    except:
-                        logger.error(f"Falha ao buscar {current_date}")
-                        continue
+                        elementos = await self._fetch_day(page, current_date)
+                    except Exception as exc:
+                        failures.append(current_date)
+                        if status_callback: await status_callback(f"Falha técnica na consulta de {current_date}; continuando os demais dias.")
+                        elementos = getattr(exc, 'partial', None)
+                        if not elementos:
+                            continue
 
+                    logger.info('data=%s etapa=resultados encontrados=%s', current_date, len(elementos))
                     if not elementos: continue
 
                     links_to_visit = []
-                    for el in elementos:
-                        txt = await el.inner_text()
-                        if "GSU" in txt.upper(): continue
+                    seen_doc_ids = set()
+                    unit_counts = {'DBP': 0, 'DBE': 0, 'GSU': 0, 'OUTRA': 0, 'INDEFINIDA': 0}
+                    matched_count = 0
+                    for item_index, element in enumerate(elementos, start=1):
+                        try:
+                            item = await self._read_listing_item(element, terms)
+                        except Exception:
+                            logger.exception('data=%s item=%s etapa=leitura do resultado', current_date, item_index)
+                            if current_date not in failures: failures.append(current_date)
+                            continue
 
-                        matches_term = False
-                        matched_term_name = "Geral"
-                        if not terms:
-                            matches_term = True
-                        else:
-                            for t in terms:
-                                matched, pattern = _match_term(t, txt)
-                                if matched:
-                                    matches_term = True
-                                    matched_term_name = t
-                                    logger.info(f"[FILTRO] Correspondencia encontrada para o termo '{t}' (padrao: '{pattern}') no texto: {txt[:150]}...")
-                                    break
+                        if item['matches_term']:
+                            matched_count += 1
+                        unit = _classify_unit(item['unit_metadata'])
+                        item['metadata_unit'] = unit
+                        if unit:
+                            unit_counts[unit] += 1
+                            logger.info('data=%s documento=%s unidade=%s fonte=metadados', current_date, item['doc_id'], unit)
+                        if unit in ('GSU', 'OUTRA'):
+                            logger.info('data=%s documento=%s motivo=unidade %s fora do escopo', current_date, item['doc_id'], unit)
+                            if unit == 'OUTRA':
+                                logger.warning('data=%s documento=%s url=%s unidade=%s motivo=revisão de unidade não reconhecida', current_date, item['doc_id'], item['url'], item['unit_metadata'])
+                            continue
+                        if unit in ('DBP', 'DBE') and not item['matches_term']:
+                            logger.info('data=%s documento=%s etapa=filtro motivo=termo não correspondente', current_date, item['doc_id'])
+                            continue
+                        if not item['url']:
+                            if not unit:
+                                unit_counts['INDEFINIDA'] += 1
+                                logger.warning('data=%s documento=%s unidade=desconhecida motivo=sem link para revisão', current_date, item['doc_id'])
+                            logger.error('data=%s documento=%s etapa=resultado motivo=link ausente', current_date, item['doc_id'])
+                            if current_date not in failures: failures.append(current_date)
+                            continue
+                        if item['doc_id'] != 'S/N':
+                            if item['doc_id'] in seen_doc_ids:
+                                continue
+                            seen_doc_ids.add(item['doc_id'])
+                        links_to_visit.append(item)
 
-                        if matches_term:
-                            m_proc = re.search(r'Processo:?\s?([\d\./-]+)', txt)
-                            proc = m_proc.group(1) if m_proc else "N/A"
-                            m_id = re.search(r'Documento:\s*(\d+)', txt)
-                            doc_id = m_id.group(1) if m_id else "S/N"
-                            link_el = await el.query_selector('a[href*="visualizar"]')
-                            if link_el:
-                                href = await link_el.get_attribute('href')
-                                links_to_visit.append({"url": self.clean_link(href), "doc_id": doc_id, "processo": proc, "term": matched_term_name})
-
-                    if not links_to_visit: continue
+                    if not links_to_visit:
+                        logger.info('data=%s recuperadas=%s termos=%s unidades=%s pertinentes=0',
+                                    current_date, len(elementos), matched_count, unit_counts)
+                        continue
 
                     sem = asyncio.Semaphore(5)
                     total_items = len(links_to_visit)
@@ -1019,17 +1301,40 @@ class DiarioScraper:
                     async def fetch_and_extract(item):
                         nonlocal day_processed_count
                         async with sem:
-                            @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=2, max=5))
+                            @retry(stop=stop_after_attempt(2), wait=wait_exponential(min=2, max=5), retry=retry_if_exception(_is_transient), reraise=True)
                             async def fetch_item_details():
                                 page_detail = await context.new_page()
                                 try:
-                                    await page_detail.goto(item['url'], timeout=30000)
+                                    response = await page_detail.goto(item['url'], timeout=30000)
+                                    if response and response.status >= 400:
+                                        raise SearchFailure(f'HTTP {response.status} ao acessar documento', transient=response.status in (408, 429, 500, 502, 503, 504))
                                     return await page_detail.content()
+                                except Exception:
+                                    logger.exception('data=%s documento=%s url=%s etapa=detalhe timeout_ms=30000', current_date, item['doc_id'], page_detail.url)
+                                    raise
                                 finally: await page_detail.close()
 
                             try:
                                 content = await fetch_item_details()
                                 soup = BeautifulSoup(content, 'html.parser')
+                                unit = _classify_unit(item['unit_metadata'], soup) or item['metadata_unit']
+                                if item['metadata_unit'] is None:
+                                    unit_counts[unit or 'INDEFINIDA'] += 1
+                                elif unit != item['metadata_unit']:
+                                    unit_counts[item['metadata_unit']] -= 1
+                                    unit_counts[unit or 'INDEFINIDA'] += 1
+                                logger.info('data=%s documento=%s unidade=%s', current_date, item['doc_id'], unit or 'não identificada')
+                                if unit in ('GSU', 'OUTRA'):
+                                    logger.info('data=%s documento=%s motivo=unidade %s fora do escopo', current_date, item['doc_id'], unit)
+                                    if unit == 'OUTRA':
+                                        logger.warning('data=%s documento=%s url=%s motivo=revisão de unidade não reconhecida no cabeçalho', current_date, item['doc_id'], item['url'])
+                                    return None
+                                if unit not in ('DBP', 'DBE'):
+                                    logger.warning('data=%s documento=%s url=%s unidade=desconhecida motivo=revisão necessária', current_date, item['doc_id'], item['url'])
+                                    raise SearchFailure('Unidade responsável não identificada; revisão necessária')
+                                if not item['matches_term']:
+                                    logger.info('data=%s documento=%s etapa=filtro motivo=termo não correspondente', current_date, item['doc_id'])
+                                    return None
                                 details = self.extract_details(soup)
                                 await self.enrich_with_ai(details, item['doc_id'], enabled=use_ai)
 
@@ -1047,40 +1352,60 @@ class DiarioScraper:
                                 obj_text = details.get('explicit_object')
                                 if not obj_text or len(obj_text) <= 5: obj_text = self.extract_object(details['sintese'])
 
+                                contract_number = details['num_contrato']
+                                if details.get('tipo_doc') == 'CONTRATO':
+                                    sign_year = re.search(r'(\d{4})$', details.get('data_assinatura') or '')
+                                    contract_number = _format_contract_number(
+                                        contract_number, sign_year.group(1) if sign_year else current_date[-4:])
+
                                 res = SearchResult(
                                     date=current_date, term=item['term'], process_number=item['processo'],
+                                    unit=unit,
                                     document_id=item['doc_id'], summary=details['sintese'][:200] + "...",
                                     object_text=obj_text, contractor=details['contractor'], company_doc=details['doc_fiscal'],
-                                    contract_number=details['num_contrato'], validity_start=details['validade_inicio'],
+                                    contract_number=contract_number, validity_start=details['validade_inicio'],
                                     validity_end=details['validade_fim'], data_assinatura=details.get('data_assinatura', '-'),
                                     value=details['valor'], link_html=item['url'],
                                     link_pdf=link_pdf, modality=details.get('modality', '-'), opening_date=details.get('opening_date', '-'),
-                                    amendment_number=details.get('num_aditamento', ''), parent_contract=details.get('contrato_pai', ''),
+                                    amendment_number=details.get('num_aditamento', ''), parent_contract=_normalize_parent_contract(details.get('contrato_pai', ''), f"{details.get('sintese', '')} {obj_text or ''}"),
                                     doc_type=details.get('tipo_doc', 'OUTRO')
                                 )
                                 day_processed_count += 1
                                 if status_callback: await status_callback(f"Extraindo item {day_processed_count} de {total_items} ({current_date})")
                                 return res
                             except Exception as e:
-                                logger.error(f"Erro no item {item['doc_id']}: {e}")
+                                logger.exception('data=%s documento=%s url=%s etapa=classificação ou parser: %s', current_date, item['doc_id'], item['url'], e)
+                                if current_date not in failures: failures.append(current_date)
                                 day_processed_count += 1
                                 return None
 
                     day_tasks = [fetch_and_extract(it) for it in links_to_visit]
                     day_results = await asyncio.gather(*day_tasks)
                     results.extend([r for r in day_results if r])
-                    self._save_partial_results(results)
+                    if results:
+                        self._save_partial_results(results)
+                    logger.info('data=%s recuperadas=%s termos=%s unidades=%s pertinentes=%s',
+                                current_date, len(elementos), matched_count, unit_counts,
+                                sum(result is not None for result in day_results))
 
                 await browser.close()
 
             elapsed = datetime.now() - start_time
+            if failures:
+                raise IncompleteSearch(results, failures)
             finish_msg = f"Concluído em {elapsed}. Total: {len(results)}"
             logger.info(finish_msg)
             if status_callback: await status_callback(finish_msg)
             return results
 
+        except IncompleteSearch:
+            raise
         except Exception as e:
-            logger.error(f"Erro fatal no scraping: {e}")
+            logger.exception("Erro no scraping: %s", e)
+            if results:
+                if current_date and current_date not in failures:
+                    failures.append(current_date)
+                raise IncompleteSearch(results, failures) from e
             raise
         finally:
             self.is_running = False

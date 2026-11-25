@@ -46,6 +46,7 @@ class SearchResult(BaseModel):
     date: str
     term: str
     category: str = "Geral"
+    unit: str = ""
     process_number: str = "-"
     document_id: str = "-"
     summary: str

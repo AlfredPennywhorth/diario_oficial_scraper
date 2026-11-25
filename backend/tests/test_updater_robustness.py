@@ -1,7 +1,6 @@
 import os
 import sys
-import unittest
-from unittest.mock import MagicMock, patch, mock_open, AsyncMock
+from unittest.mock import patch
 import pytest
 
 # Adicionar pasta backend e raiz ao path
@@ -10,14 +9,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from backend.main import app, get_clean_env, start_update
 
-def test_get_clean_env_removes_meipass():
+def test_get_clean_env_removes_meipass(tmp_path):
     # Simular ambiente frozen do PyInstaller
-    dummy_meipass = r"C:\Users\Temp\_MEI12345"
+    dummy_meipass = str(tmp_path / '_MEI12345')
+    system_path = str(tmp_path / 'system')
+    extra_path = str(tmp_path / 'system32')
 
     with patch.object(sys, 'frozen', True, create=True), \
          patch.object(sys, '_MEIPASS', dummy_meipass, create=True), \
          patch.dict(os.environ, {
-             "PATH": f"C:\\Windows;{dummy_meipass};C:\\Windows\\System32",
+             "PATH": os.pathsep.join([system_path, dummy_meipass, extra_path]),
              "_MEIPASS": dummy_meipass,
              "sys._MEIPASS": dummy_meipass
          }):
@@ -31,159 +32,46 @@ def test_get_clean_env_removes_meipass():
         # 2. Garante que a pasta temporária do PyInstaller foi removida do PATH
         paths = clean_env.get("PATH", "").split(os.pathsep)
         assert dummy_meipass not in paths
-        assert "C:\\Windows" in paths
-        assert "C:\\Windows\\System32" in paths
-
-def exists_side_effect(path):
-    if "update.lock" in str(path):
-        return False
-    return True
+        assert system_path in paths
+        assert extra_path in paths
 
 @pytest.mark.asyncio
-@patch("backend.main.check_for_updates")
-@patch("aiohttp.ClientSession.get")
-@patch("builtins.open", new_callable=mock_open)
-@patch("zipfile.ZipFile")
-@patch("os.path.exists", side_effect=exists_side_effect)
-@patch("os.path.getsize")
-@patch("subprocess.Popen")
-@patch("asyncio.create_task")
-async def test_start_update_popen_robustness(
-    mock_create_task,
-    mock_popen,
-    mock_getsize,
-    mock_exists,
-    mock_zipfile,
-    mock_open_file,
-    mock_http_get,
-    mock_check_updates
-):
-    # Setup mocks
-    mock_getsize.return_value = 1024 * 1024  # 1MB
-
-    # Mock check_for_updates
-    mock_update_info = MagicMock()
-    mock_update_info.available = True
-    mock_update_info.latest_version = "1.5.3"
-    mock_update_info.download_url = "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.3/DiarioScraper-v1.5.3.zip"
-    mock_check_updates.return_value = mock_update_info
-
-    # Mock HTTP response
-    mock_response = MagicMock()
-    mock_response.status = 200
-    # Usar AsyncMock para o método read() que é awaitado
-    mock_response.content.read = AsyncMock(side_effect=[b"zipdata", b""])
-
-    # Mock context managers
-    mock_http_get.return_value.__aenter__.return_value = mock_response
-
-    # Mock zipfile internal structure
-    mock_zip_instance = MagicMock()
-    mock_zip_instance.namelist.return_value = ["DiarioScraper.exe", "backend/main.py"]
-    mock_zipfile.return_value.__enter__.return_value = mock_zip_instance
-
-    # Mock subprocess process
-    mock_process = MagicMock()
-    mock_process.pid = 99999
-    mock_popen.return_value = mock_process
-
-    # Capturar e fechar a corrotina agendada para evitar RuntimeWarning
-    scheduled_coroutines = []
-    def capture_and_close_coroutine(coro):
-        scheduled_coroutines.append(coro)
-        coro.close()
-        return MagicMock()
-    mock_create_task.side_effect = capture_and_close_coroutine
-
-    # Executar diretamente o endpoint como corotina assíncrona
-    response = await start_update()
-
-    # Assertions
-    assert response["status"] == "success"
-
-    # 1. Verificar se Popen foi chamado com argumentos corretos
-    assert mock_popen.call_count == 1
-    args, kwargs = mock_popen.call_args
-
-    cmd_list = args[0]
-    # Argumentos do PowerShell usam caminho absoluto
-    assert "powershell.exe" in cmd_list[0].lower()
-    assert os.path.isabs(cmd_list[0]) or cmd_list[0] == "powershell.exe"
-
-    # Argumentos usam -NoProfile, -ExecutionPolicy Bypass, -WindowStyle Hidden
-    assert "-NoProfile" in cmd_list
-    assert "-ExecutionPolicy" in cmd_list
-    assert "Bypass" in cmd_list
-    assert "-WindowStyle" in cmd_list
-    assert "Hidden" in cmd_list
-
-    # Popen usa shell=False por padrão quando passamos lista e não definimos shell=True
-    assert kwargs.get("shell", False) is False
-
-    # close_fds=True para dissociação robusta
-    assert kwargs.get("close_fds") is True
-
-    # creationflags usa CREATE_NEW_CONSOLE (0x00000010) no Windows
-    if sys.platform == "win32":
-        import subprocess
-        assert kwargs.get("creationflags") == subprocess.CREATE_NEW_CONSOLE
-
-    # Encerramento agendado (asyncio.create_task chamado para shutdown)
-    assert mock_create_task.call_count == 1
-    assert len(scheduled_coroutines) == 1
-
-@pytest.mark.asyncio
-@patch("backend.main.check_for_updates")
-@patch("aiohttp.ClientSession.get")
-@patch("builtins.open", new_callable=mock_open)
-@patch("zipfile.ZipFile")
-@patch("os.path.exists", side_effect=exists_side_effect)
-@patch("os.path.getsize")
-@patch("subprocess.Popen")
-@patch("asyncio.create_task")
-async def test_start_update_popen_failure_does_not_schedule_shutdown(
-    mock_create_task,
-    mock_popen,
-    mock_getsize,
-    mock_exists,
-    mock_zipfile,
-    mock_open_file,
-    mock_http_get,
-    mock_check_updates
-):
-    # Setup mocks
-    mock_getsize.return_value = 1024 * 1024  # 1MB
-
-    # Mock check_for_updates
-    mock_update_info = MagicMock()
-    mock_update_info.available = True
-    mock_update_info.latest_version = "1.5.3"
-    mock_update_info.download_url = "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.3/DiarioScraper-v1.5.3.zip"
-    mock_check_updates.return_value = mock_update_info
-
-    # Mock HTTP response
-    mock_response = MagicMock()
-    mock_response.status = 200
-    mock_response.content.read = AsyncMock(side_effect=[b"zipdata", b""])
-    mock_http_get.return_value.__aenter__.return_value = mock_response
-
-    # Mock zipfile
-    mock_zip_instance = MagicMock()
-    mock_zip_instance.namelist.return_value = ["DiarioScraper.exe", "backend/main.py"]
-    mock_zipfile.return_value.__enter__.return_value = mock_zip_instance
-
-    # Mock subprocess Popen to throw FileNotFoundError (PowerShell missing)
-    mock_popen.side_effect = FileNotFoundError("powershell.exe not found")
-
-    # Executar e assegurar que lança HTTPException
+async def test_start_update_popen_robustness(tmp_path, monkeypatch):
     from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc_info:
-        await start_update()
 
-    # Assertions
-    # Deve retornar erro HTTP 500 porque a inicialização do helper falhou
-    assert exc_info.value.status_code == 500
-    assert "Erro interno de atualização" in exc_info.value.detail
+    installation = tmp_path / 'installed'
+    (installation / 'logs').mkdir(parents=True)
+    (installation / 'results').mkdir()
+    files = {'DiarioScraper.exe': b'executable', '.env': b'config',
+             'logs/app.log': b'log', 'results/result.json': b'result'}
+    for name, content in files.items():
+        (installation / name).write_bytes(content)
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    monkeypatch.setattr(sys, 'executable', str(installation / 'DiarioScraper.exe'))
 
-    # 1. Encerramento NÃO é agendado quando Popen falha
-    assert mock_create_task.call_count == 0
+    with patch('subprocess.Popen') as popen, patch('os._exit') as exit_process, \
+         patch('asyncio.create_task') as create_task:
+        with pytest.raises(HTTPException) as caught:
+            await start_update()
+        assert caught.value.status_code == 503
+        popen.assert_not_called()
+        exit_process.assert_not_called()
+        create_task.assert_not_called()
+    assert {path.relative_to(installation).as_posix(): path.read_bytes()
+            for path in installation.rglob('*') if path.is_file()} == files
+
+@pytest.mark.asyncio
+async def test_start_update_popen_failure_does_not_schedule_shutdown():
+    from fastapi import HTTPException
+
+    with patch('subprocess.Popen', side_effect=FileNotFoundError('powershell.exe not found')) as popen, \
+         patch('os._exit') as exit_process, patch('asyncio.create_task') as create_task, \
+         patch('backend.main.check_for_updates') as check_updates:
+        with pytest.raises(HTTPException) as caught:
+            await start_update()
+        assert caught.value.status_code == 503
+        assert 'desativada por segurança' in caught.value.detail
+        popen.assert_not_called()
+        exit_process.assert_not_called()
+        create_task.assert_not_called()
+        check_updates.assert_not_called()

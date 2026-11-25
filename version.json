@@ -1,9 +1,12 @@
 {
-  "version": "1.5.8",
-  "release_date": "2026-09-29",
-  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.8/DiarioScraper-v1.5.8.zip",
+  "version": "1.5.9",
+  "release_date": "2026-11-23",
+  "download_url": "https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v1.5.9/DiarioScraper-v1.5.9.zip",
   "changelog": [
-    "Correção dos links invertidos em publicações de Pregão (Link da publicação vs Link do Documento PDF anexado)."
+    "Resiliência na consulta por data, paginação completa e filtro por unidade (DBP e DBE)",
+    "Correção definitiva na classificação e formatação de Pregão Eletrônico (despachos, links e licitante vencedor)",
+    "Reconhecimento da mensagem 'Sem publicações no dia' e inclusão de Dispensa (Baixa Prioridade / Diversos)",
+    "Preservação de resultados parciais por execução e bloqueio de auto-update inseguro em rede (UNC)"
   ],
   "critical": false
 }

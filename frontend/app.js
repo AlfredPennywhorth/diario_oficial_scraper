@@ -161,11 +161,15 @@ function valorPorExtenso(valorStr) {
 
 function connectWS() {
     console.log("Tentando conectar ao WebSocket...");
-    socket = new WebSocket("ws://127.0.0.1:8085/ws/logs");
+    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/logs`;
+    socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
         console.log("Conectado ao WebSocket");
         updateStatus("Conectado ao servidor.");
+        // Atualizar versão exibida no rodapé ao conectar/reconectar
+        loadCurrentVersion();
         // Verificar atualizações quando conectar
         checkForUpdates();
     };
@@ -181,6 +185,9 @@ function connectWS() {
                 renderAll(allResults);
             } else if (data.type === 'complete') {
                 updateStatus("Raspagem concluída!");
+                toggleLoading(false);
+            } else if (data.type === 'incomplete') {
+                updateStatus(data.message || "Pesquisa incompleta. Os resultados exibidos são parciais.");
                 toggleLoading(false);
             } else if (data.type === 'error') {
                 const errorMsg = data.message || "Erro desconhecido";
@@ -294,13 +301,19 @@ function determineType(item) {
             tipo = 'PARCERIA';
         } else if (
             (() => {
-                let clean = fullTerm.replace("TEXTO DO DESPACHO:", "").replace("TEXTO DO DESPACHO", "");
+                let clean = fullTerm
+                    .replace("TEXTO DO DESPACHO:", "")
+                    .replace("TEXTO DO DESPACHO", "")
+                    .replace("DESPACHO DE ADJUDICAÇÃO", "")
+                    .replace("DESPACHO DE ADJUDICACAO", "")
+                    .replace("DESPACHO DE HOMOLOGAÇÃO", "")
+                    .replace("DESPACHO DE HOMOLOGACAO", "");
                 return clean.includes('ESCLARECIMENTO') || clean.includes('QUESTIONAMENTO') || clean.includes('IMPUGNAÇ') || clean.includes('NOTIFICAÇÃO') || clean.includes('DESPACHO');
             })()
         ) {
             tipo = 'DIVERSOS';
         } else if (fullTerm.includes('DISPENSA')) {
-            tipo = 'PEDIDO_COMPRA';
+            tipo = 'DIVERSOS';
         } else if (fullTerm.includes('PREGÃO') || fullTerm.includes('PREGAO') || fullTerm.includes('ABERTURA DE LICITAÇÃO') || fullTerm.includes('AVISO DE LICITAÇÃO') || fullTerm.includes('ATA DE REGISTRO DE PREÇOS') || fullTerm.includes('SISTEMA DE REGISTRO DE PREÇOS')) {
             tipo = 'PREGAO';
         }
@@ -652,7 +665,7 @@ function renderTextView(results) {
             html += P("Modalidade de Origem:", modality && modality !== '-' ? modality : "Ver contrato original");
 
             html += P("Objeto do Aditamento:", objText);
-            html += P("Data da Assinatura:", item.validity_start || '-');
+            html += P("Data da Assinatura:", item.data_assinatura || item.validity_start || '-');
             html += P("Data da Publicação:", item.date);
 
             const vigencia = (item.validity_start && item.validity_end && item.validity_end !== '-') ? `${item.validity_start} a ${item.validity_end}` : 'Ver íntegra';
@@ -708,7 +721,7 @@ function renderTextView(results) {
             html += P("Modalidade/Origem:", modality && modality !== '-' ? modality : "Não informada");
 
             html += P("Objeto:", objText);
-            html += P("Data da Assinatura:", item.validity_start || '-');
+            html += P("Data da Assinatura:", item.data_assinatura || item.validity_start || '-');
             html += P("Data da Publicação:", item.date);
             
             const vigencia = (item.validity_start && item.validity_end && item.validity_end !== '-') ? `${item.validity_start} a ${item.validity_end}` : 'Ver íntegra';
@@ -737,7 +750,8 @@ function renderTextView(results) {
 
             if (tipo !== 'DIVERSOS') {
                 const docFiscal = formatarDocFiscal(item.company_doc);
-                html += P("Licitante Vencedor:", `${item.contractor || 'EM PROCESSO'}${docFiscal ? ' , ' + docFiscal : ''}`);
+                const vencedor = (item.contractor && item.contractor !== '-') ? item.contractor : 'EM PROCESSO';
+                html += P("Licitante Vencedor:", `${vencedor}${docFiscal ? ' , ' + docFiscal : ''}`);
                 html += P("Modalidade:", modality);
                 html += P("Data da Abertura:", item.opening_date || '-');
             }

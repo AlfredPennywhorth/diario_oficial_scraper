@@ -1,7 +1,7 @@
 from fastapi import FastAPI, WebSocket, HTTPException, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 from contextlib import asynccontextmanager
 from typing import List
@@ -17,6 +17,8 @@ import multiprocessing
 from datetime import datetime
 
 from scraper_service_layer import ScraperService
+from scraper_service import IncompleteSearch, SearchFailure
+from secure_update import is_network_location
 from models import SearchRequest, SearchResult
 from version import get_current_version, check_for_updates
 from paths import get_frontend_dir, get_app_dir, get_logs_dir, get_partial_results_path
@@ -98,6 +100,11 @@ def get_clean_env():
 
 @app.post("/api/start-update")
 async def start_update():
+    installation = sys.executable if getattr(sys, 'frozen', False) else os.path.abspath(__file__)
+    if is_network_location(installation) or is_network_location(os.path.realpath(installation)):
+        raise HTTPException(status_code=503, detail="Atualização automática em compartilhamento de rede bloqueada. Solicite atualização administrada centralmente.")
+    raise HTTPException(status_code=503, detail="Atualização automática desativada por segurança. A instalação paralela e a recuperação devem ser homologadas antes do uso.")
+
     import aiohttp
     import subprocess
     import zipfile
@@ -408,6 +415,8 @@ async def search_endpoint(request: SearchRequest):
         logger.info(f"Pesquisa via API iniciada: {request.start_date} a {request.end_date}")
         results = await app.state.service.run(request)
         return results
+    except IncompleteSearch as e:
+        return JSONResponse(status_code=503, content={"detail": str(e), "results": [result.model_dump() for result in e.results], "failed_dates": e.failures})
     except Exception as e:
         logger.error(f"Pesquisa via API falhou: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -435,7 +444,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     async def log_callback(msg):
                         await websocket.send_json({"type": "log", "message": msg})
 
-                    results = await app.state.service.run(req, status_callback=log_callback)
+                    try:
+                        results = await app.state.service.run(req, status_callback=log_callback)
+                    except IncompleteSearch as exc:
+                        await websocket.send_json({"type": "result", "data": [result.model_dump() for result in exc.results]})
+                        await websocket.send_json({"type": "incomplete", "message": str(exc)})
+                        continue
                     response_data = [r.model_dump() if hasattr(r, 'model_dump') else r.dict() for r in results]
 
                     await websocket.send_json({"type": "result", "data": response_data})
@@ -443,9 +457,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
             except WebSocketDisconnect:
                 break
+            except SearchFailure as e:
+                logger.exception("Falha na consulta ao Diário Oficial")
+                await websocket.send_json({"type": "error", "message": f"Não foi possível consultar o Diário Oficial: {e}. Verifique a conexão e o acesso ao portal."})
             except Exception as e:
                 logger.error(f"Erro no WebSocket: {e}", exc_info=True)
-                await websocket.send_json({"type": "error", "message": f"Erro interno: {str(e)}"})
+                await websocket.send_json({"type": "error", "message": "Não foi possível concluir a pesquisa. Verifique a conexão e os logs da aplicação."})
     except WebSocketDisconnect:
         logger.info("WebSocket desconectado")
 
@@ -456,16 +473,6 @@ if __name__ == "__main__":
     print("="*60)
 
     try:
-        if sys.platform == "win32":
-            import asyncio
-            from asyncio.windows_events import ProactorEventLoop
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running(): loop.stop()
-            except: pass
-            loop = ProactorEventLoop()
-            asyncio.set_event_loop(loop)
-
         def open_browser():
             import time
             time.sleep(2.5)
