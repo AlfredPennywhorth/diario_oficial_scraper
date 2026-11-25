@@ -41,6 +41,13 @@ async def test_listing_breadcrumb_identifies_unit(breadcrumb, expected):
 
 @pytest.mark.parametrize('raw,year,expected', [
     ('212026', '2026', '021/2026'),
+    ('302026', '2026', '030/2026'),
+    ('282026', '2026', '028/2026'),
+    ('312026', '2026', '031/2026'),
+    ('52026', '2026', '005/2026'),
+    ('1052026', '2026', '105/2026'),
+    ('302025', '2026', '030/2025'),
+    ('30 / 26', '2026', '030/2026'),
     ('4826', '2026', '048/2026'),
     ('48/26', '2026', '048/2026'),
     ('21/2026', '2026', '021/2026'),
@@ -238,3 +245,79 @@ def test_html_signature_date_is_not_replaced_by_vigencia(method, doc_type):
     missing = getattr(fmt, method)(_result(doc_type, data_assinatura='', validity_start='20/10/2026', validity_end='20/10/2027'))
     assert 'Data da Assinatura:</span> <span class="val">-<' in missing
     assert '20/10/2026 a 20/10/2027' in missing
+
+
+@pytest.mark.parametrize('table_num,text_num,expected', [
+    ('302026', '30/26', '030/2026'),
+    ('282026', '28/26', '028/2026'),
+    ('312026', '31/26', '031/2026'),
+    ('PREGÃO ELETRÔNICO 302026', '30/26', '030/2026'),
+])
+def test_pregao_extract_details_prefers_slashed_number_over_concatenated(table_num, text_num, expected):
+    html = f"""
+    <div class="conteudoMateria">
+        <table>
+            <tr><th>Número</th><td>{table_num}</td></tr>
+            <tr><th>Modalidade</th><td>PREGÃO ELETRÔNICO</td></tr>
+            <tr><th>Data da sessão</th><td>17/12/2026</td></tr>
+            <tr><th>Texto do despacho</th><td>PROCESSO SEI Nº 7410.2026/0011199-4 MODALIDADE: PREGÃO ELETRÔNICO Nº {text_num} OBJETO: FORNECIMENTO DE UNIFORMES</td></tr>
+        </table>
+    </div>
+    """
+    details = DiarioScraper().extract_details(BeautifulSoup(html, 'html.parser'))
+    assert details['tipo_doc'] == 'PREGAO'
+    assert details['num_contrato'] == expected
+
+
+@pytest.mark.asyncio
+async def test_scrape_formats_concatenated_pregao_number_without_slash_in_text():
+    scraper = DiarioScraper()
+    page = MagicMock()
+    page.goto = AsyncMock(return_value=SimpleNamespace(status=200))
+    item = _ListingSnapshot(
+        'CET > CET/DBP\nProcesso: 7410.2026/0011199-4 - Pregão\nDocumento: 169432005 - Aviso de Licitação',
+        'visualizar?169432005'
+    )
+    detail = MagicMock()
+    detail.goto = AsyncMock(return_value=SimpleNamespace(status=200))
+    detail.url = 'u'
+    detail.content = AsyncMock(return_value="""
+        <p class="Centralizado_Timbre_Secretaria">CET/DBP</p>
+        <div class="conteudoMateria">
+            <table>
+                <tr><th>Número</th><td>302026</td></tr>
+                <tr><th>Modalidade</th><td>PREGÃO ELETRÔNICO</td></tr>
+                <tr><th>Objeto da licitação</th><td>FORNECIMENTO DE UNIFORMES</td></tr>
+                <tr><th>Data da sessão</th><td>17/12/2026</td></tr>
+            </table>
+        </div>
+    """)
+    detail.close = AsyncMock()
+    context = MagicMock()
+    context.new_page = AsyncMock(side_effect=[page, detail])
+    browser = MagicMock()
+    browser.new_context = AsyncMock(return_value=context)
+    browser.close = AsyncMock()
+    playwright = MagicMock()
+    playwright.chromium.launch = AsyncMock(return_value=browser)
+    manager = MagicMock()
+    manager.__aenter__ = AsyncMock(return_value=playwright)
+    manager.__aexit__ = AsyncMock(return_value=False)
+
+    with patch('scraper_service.async_playwright', return_value=manager), \
+         patch.object(scraper, '_open_search_page', new_callable=AsyncMock), \
+         patch.object(scraper, '_fetch_day', new_callable=AsyncMock, return_value=[item]), \
+         patch.object(scraper, '_save_partial_results'):
+        results = await scraper.scrape('25/11/2026', '25/11/2026', ['Pregão'], use_ai=False)
+
+    assert len(results) == 1
+    assert results[0].doc_type == 'PREGAO'
+    assert results[0].contract_number == '030/2026'
+
+
+def test_formatter_licitacao_normalizes_concatenated_pregao_number():
+    fmt = DiarioFormatter()
+    res = _result('PREGAO', date='25/11/2026', modality='PREGÃO ELETRÔNICO', contract_number='302026')
+    html = fmt.formatar_licitacao(res)
+    assert 'PREGÃO ELETRÔNICO 030/2026' in html
+    assert '302026' not in html

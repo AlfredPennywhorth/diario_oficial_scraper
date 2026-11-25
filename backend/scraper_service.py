@@ -92,9 +92,9 @@ class _ListingSnapshot:
 
 
 def _format_contract_number(raw, reference_year):
-    """Normaliza número de contrato para NNN/AAAA; sem ano confiável, valores sem ano explícito ficam intactos."""
+    """Normaliza número de contrato/pregão para NNN/AAAA; sem ano confiável, valores sem ano explícito ficam intactos."""
     value = (raw or '').strip()
-    m = re.fullmatch(r'(\d{1,4})/(\d{2}|\d{4})', value)
+    m = re.fullmatch(r'(\d{1,4})\s*/\s*(\d{2}|\d{4})', value)
     if m:
         number, year = m.groups()
         year = year if len(year) == 4 else f'20{year}'
@@ -104,9 +104,12 @@ def _format_contract_number(raw, reference_year):
         return value
     if len(value) <= 3:
         return f'{value.zfill(3)}/{ref}'
-    for suffix, min_len in ((ref, 5), (ref[2:], 4)):
-        if len(value) >= min_len and value.endswith(suffix):
-            return f'{value[:-len(suffix)].zfill(3)}/{ref}'
+    ref_int = int(ref)
+    for year_candidate in (ref, str(ref_int - 1), str(ref_int + 1)):
+        if 5 <= len(value) <= 7 and value.endswith(year_candidate):
+            return f'{value[:-4].zfill(3)}/{year_candidate}'
+    if len(value) >= 4 and len(value) <= 5 and value.endswith(ref[2:]):
+        return f'{value[:-2].zfill(3)}/{ref}'
     return value
 
 
@@ -710,11 +713,22 @@ class DiarioScraper:
         if m_con:
              data['num_contrato'] = m_con.group(1)
 
-        # 2. Busca genérica se ainda estiver com valor padrão ou "-"
-        if data.get('num_contrato') in ["-", "", None]:
-            m_id = re.search(r'(?:Pregão(?: Eletrônico)?|Dispensa(?: Eletrônica| de Licitação)?|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Coopera[çc][ãa]o|Termo de Doação|Termo de Comodato)\s*(?:nº|n°|n\.º)?\s*(\d[\d\.]*(?:/[\d]{2,4})?)', text, re.IGNORECASE)
-            if m_id:
-                data['num_contrato'] = m_id.group(1)
+        # 2. Busca genérica se ainda estiver com valor padrão, "-", ou sem barra (ex: 302026 da tabela Pubnet)
+        if data.get('num_contrato') in ["-", "", None] or '/' not in str(data.get('num_contrato', '')):
+            pat_id = r'(?:Pregão(?: Eletrônico)?|Dispensa(?: Eletrônica| de Licitação)?|Licitação|Carta Convite|Nota de Empenho|Termo de Fomento|Termo de Colaboração|Acordo de Coopera[çc][ãa]o|Termo de Doação|Termo de Comodato)\s*(?:n\.?\s*[º°]\s*|n\.\s*)?(\d[\d\.]*(?:\s*/\s*[\d]{2,4})?)'
+            first_match = None
+            slash_match = None
+            for m_id in re.finditer(pat_id, text, re.IGNORECASE):
+                cand = re.sub(r'\s+', '', m_id.group(1))
+                if first_match is None:
+                    first_match = cand
+                if '/' in cand:
+                    slash_match = cand
+                    break
+            if slash_match:
+                data['num_contrato'] = slash_match
+            elif first_match and data.get('num_contrato') in ["-", "", None]:
+                data['num_contrato'] = first_match
 
         # 3. Busca específica por ACORDO DE COOPERAÇÃO (para garantir o prefixo)
         m_acordo = re.search(r'(ACORDO DE COOPERA[ÇC][ÃA]O)\s*(?:n[º°.º]|n[°º])?\s*([\d\.]+)/([\d]{2,4})', text, re.IGNORECASE)
@@ -1353,7 +1367,7 @@ class DiarioScraper:
                                 if not obj_text or len(obj_text) <= 5: obj_text = self.extract_object(details['sintese'])
 
                                 contract_number = details['num_contrato']
-                                if details.get('tipo_doc') == 'CONTRATO':
+                                if details.get('tipo_doc') in ('CONTRATO', 'PREGAO', 'DIVERSOS'):
                                     sign_year = re.search(r'(\d{4})$', details.get('data_assinatura') or '')
                                     contract_number = _format_contract_number(
                                         contract_number, sign_year.group(1) if sign_year else current_date[-4:])

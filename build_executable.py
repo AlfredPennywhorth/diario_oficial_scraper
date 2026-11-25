@@ -90,10 +90,8 @@ version_data = {
     "release_date": datetime.now().strftime("%Y-%m-%d"),
     "download_url": f"https://github.com/AlfredPennywhorth/diario_oficial_scraper/releases/download/v{VERSION}/DiarioScraper-v{VERSION}.zip",
     "changelog": [
-        "Resiliência na consulta por data, paginação completa e filtro por unidade (DBP e DBE)",
-        "Correção definitiva na classificação e formatação de Pregão Eletrônico (despachos, links e licitante vencedor)",
-        "Reconhecimento da mensagem 'Sem publicações no dia' e inclusão de Dispensa (Baixa Prioridade / Diversos)",
-        "Preservação de resultados parciais por execução e bloqueio de auto-update inseguro em rede (UNC)"
+        "Correção definitiva do formato do número de Pregão/Licitação (NNAAAA para NNN/AAAA) na extração, no formatador HTML e na interface web",
+        "Suporte a números concatenados na virada de ano e preferência por números com barra no texto do despacho"
     ],
     "critical": False
 }

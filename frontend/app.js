@@ -586,6 +586,34 @@ function normalizarTermo(termo) {
     return t || "—";
 }
 
+function formatarNumeroDocumento(raw, refDate) {
+    const value = String(raw || '').trim();
+    if (!value || value === '-') return '—';
+    const slashMatch = value.match(/^(\d{1,4})\s*\/\s*(\d{2}|\d{4})$/);
+    if (slashMatch) {
+        const num = slashMatch[1].padStart(3, '0');
+        const year = slashMatch[2].length === 4 ? slashMatch[2] : `20${slashMatch[2]}`;
+        return `${num}/${year}`;
+    }
+    const refMatch = String(refDate || '').match(/(\d{4})$/);
+    if (refMatch && /^\d+$/.test(value)) {
+        const ref = refMatch[1];
+        const refInt = parseInt(ref, 10);
+        if (value.length <= 3) {
+            return `${value.padStart(3, '0')}/${ref}`;
+        }
+        for (const y of [ref, String(refInt - 1), String(refInt + 1)]) {
+            if (value.length >= 5 && value.length <= 7 && value.endsWith(y)) {
+                return `${value.slice(0, -4).padStart(3, '0')}/${y}`;
+            }
+        }
+        if (value.length >= 4 && value.length <= 5 && value.endsWith(ref.slice(2))) {
+            return `${value.slice(0, -2).padStart(3, '0')}/${ref}`;
+        }
+    }
+    return value;
+}
+
 function renderTextView(results) {
     const container = document.getElementById('resultsText');
 
@@ -739,7 +767,8 @@ function renderTextView(results) {
 
             html += P("Número do Processo:", item.process_number || '-');
 
-            const pubNum = item.contract_number && item.contract_number.length > 2 ? item.contract_number : "—";
+            const rawPubNum = item.contract_number && item.contract_number !== '-' ? formatarNumeroDocumento(item.contract_number, item.date) : "—";
+            const pubNum = rawPubNum && rawPubNum.length > 2 ? rawPubNum : "—";
             const pubLabel = (modality && modality !== '-' ? modality : "PUBLICACAO");
             html += `<p>
                 <strong>Número da Publicação: </strong> 

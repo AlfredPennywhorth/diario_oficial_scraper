@@ -5,6 +5,7 @@ Converte resultados em HTML formatado estilo Google Colab
 import re
 from typing import List
 from models import SearchResult
+from scraper_service import _format_contract_number
 
 
 def validate_cnpj(cnpj: str) -> bool:
@@ -305,8 +306,13 @@ class DiarioFormatter:
     def formatar_licitacao(self, r: SearchResult) -> str:
         """Formata card de licitação"""
         mod_nome = r.modality if r.modality and r.modality != "-" else self.extrair_modalidade(r.summary)
-        num_pub = r.contract_number if r.contract_number and r.contract_number != "-" else self.extrair_numero_licitacao(r.summary, r.document_id)
-        num_pub = self._normalize_num_ano(num_pub) if "/" in num_pub else num_pub
+        has_contract_num = bool(r.contract_number and r.contract_number != "-")
+        num_pub = r.contract_number if has_contract_num else self.extrair_numero_licitacao(r.summary, r.document_id)
+        if "/" in num_pub:
+            num_pub = self._normalize_num_ano(num_pub)
+        elif has_contract_num or num_pub != r.document_id:
+            ref_year_match = re.search(r'(\d{4})$', r.date or '')
+            num_pub = _format_contract_number(num_pub, ref_year_match.group(1) if ref_year_match else None)
         vencedor = r.contractor if r.contractor and r.contractor != "-" else self.extrair_vencedor(r.summary)
         if r.company_doc and r.company_doc != "-" and vencedor != "EM PROCESSO":
             formatted_doc = self._normalize_cnpj_cpf(r.company_doc)
